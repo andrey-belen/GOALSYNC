@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isEmailMatch(email) {
+      return request.auth.token.email == email;
+    }
+
+    function isTeamTrainer(teamId) {
+      return get(/databases/$(database)/documents/teams/$(teamId)).data.trainerId == request.auth.uid;
+    }
+
+    function isTrainer() {
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return user != null && user.data.type == 'trainer';
+    }
+
+    function isTeamMember(teamId) {
+      let team = get(/databases/$(database)/documents/teams/$(teamId));
+      return team != null && (
+        team.data.trainerId == request.auth.uid ||
+        team.data.players.hasAny([request.auth.uid])
+      );
+    }
+
+    function isJoiningTeam() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players']) &&
+             request.resource.data.players.hasOnly(resource.data.players.concat([request.auth.uid]));
+    }
+
+    // Announcements rules
+    match /announcements/{announcementId} {
+      allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() && isTeamTrainer(request.resource.data.teamId);
+      allow update: if isAuthenticated() && (
+        // Allow trainers to update any announcement for their team
+        isTeamTrainer(resource.data.teamId) ||
+        // Allow players to only update the readBy array
+        (isTeamMember(resource.data.teamId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']) &&
+         request.resource.data.readBy.hasOnly(resource.data.readBy.concat([request.auth.uid])))
+      );
+      allow delete: if isAuthenticated() && isTeamTrainer(resource.data.teamId);
+    }
+
+    // Events rules
+    match /events/{eventId} {
+      allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
+      allow create: if isAuthenticated() && isTeamTrainer(request.resource.data.teamId);
+      allow update: if isAuthenticated() && (
+        // Allow trainers to update any event
+        isTeamTrainer(resource.data.teamId) ||
+        // Allow players to only update attendance arrays
+        (isTeamMember(resource.data.teamId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasAny(['attendees', 'absentees']))
+      );
+      allow delete: if isAuthenticated() && isTeamTrainer(resource.data.teamId);
+    }
+
+    // Invitations rules
+    match /invitations/{invitationId} {
+      allow read: if isAuthenticated() && (
+        resource.data.playerEmail == request.auth.token.email ||
+        isTrainer()
+      );
+      allow write: if isAuthenticated() && isTrainer();
+      allow delete: if isAuthenticated() && isTrainer();
+    }
+
+    // Teams rules
+    match /teams/{teamId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isTrainer();
+      allow update: if isAuthenticated() && (
+        isTeamTrainer(teamId) ||
+        isJoiningTeam()  // Allow players to add themselves to the team
+      );
+      allow delete: if isAuthenticated() && isTeamTrainer(teamId);
+
+      // Chat messages rules
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && isTeamMember(teamId);
+        allow create: if isAuthenticated() && isTeamMember(teamId);
+        allow update: if isAuthenticated() && isTeamMember(teamId) && (
+          // Only allow updating the readBy array
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy']) &&
+          // Only allow adding the current user's ID to readBy
+          request.resource.data.readBy.hasOnly(resource.data.readBy.concat([request.auth.uid]))
+        );
+      }
+    }
+
+    // Users rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isTrainer();
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        isTrainer()
+      );
+      allow delete: if isAuthenticated() && isTrainer();
+    }
+
+    // Player Match Stats rules
+    match /playerMatchStats/{statId} {
+      allow read: if isAuthenticated() && (
+        resource.data.playerId == request.auth.uid ||
+        isTrainer()
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.playerId == request.auth.uid ||
+        isTrainer()
+      );
+      allow update: if isAuthenticated() && (
+        // Allow trainers to update status and add comments
+        (isTrainer() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'comments'])) ||
+        // Allow players to update their own stats before they're reviewed
+        (resource.data.playerId == request.auth.uid &&
+         resource.data.status == 'pending' &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stats']))
+      );
+      allow delete: if isAuthenticated() && isTrainer();
+    }
+
+    // Match Stats rules
+    match /matchStats/{statId} {
+      allow read: if isAuthenticated() && isTrainer();
+      allow create, update: if isAuthenticated() && isTrainer();
+      allow delete: if isAuthenticated() && isTrainer();
+    }
+  }
+} 
