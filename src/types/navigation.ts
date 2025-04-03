@@ -100,9 +100,16 @@ export type RootStackParamList = {
   MatchStats: {
     matchId: string;
     isHomeGame: boolean;
+    refreshStats?: boolean;
   };
   UploadMatchStats: {
     matchId: string;
+  };
+  SubmitPlayerStats: {
+    matchId: string;
+    teamId: string;
+    playerId?: string;
+    isEditing?: boolean;
   };
 };
 

@@ -13,7 +13,7 @@ import { theme } from '../theme';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, Timestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
 import { Event } from '../types/database';
@@ -70,9 +70,28 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
         }
 
         // Check if player attended
-        const playerAttendance = matchData.attendance?.find(a => a.playerId === user?.id);
-        if (!playerAttendance?.attended) {
+        const isPresent = user?.id ? matchData.attendees?.includes(user.id) || false : false;
+        if (!isPresent) {
           Alert.alert('Not Eligible', 'You must be marked as present to submit statistics');
+          navigation.goBack();
+          return;
+        }
+
+        // Check if player already has stats for this match
+        const statsQuery = query(
+          collection(db, 'playerMatchStats'),
+          where('matchId', '==', matchId),
+          where('playerId', '==', user?.id)
+        );
+        const statsSnapshot = await getDocs(statsQuery);
+        
+        if (!statsSnapshot.empty) {
+          const existingStats = statsSnapshot.docs[0].data();
+          if (existingStats.status === 'approved') {
+            Alert.alert('Already Submitted', 'Your statistics for this match have already been approved.');
+          } else {
+            Alert.alert('Already Submitted', 'You have already submitted statistics for this match. Please wait for approval.');
+          }
           navigation.goBack();
           return;
         }

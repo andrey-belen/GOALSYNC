@@ -135,17 +135,19 @@ export interface PlayerMatchStats {
   stats: {
     goals: number;
     assists: number;
+    shotsOnTarget: number;
     yellowCards: number;
     redCards: number;
+    cleanSheet: boolean;
     minutesPlayed: number;
-    shotsOnTarget: number;
-    saves?: number; // for goalkeepers
-    cleanSheet?: boolean; // for goalkeepers
+    saves: number;
+    goalsConceded: number;
   };
   status: 'pending' | 'approved' | 'rejected';
   submittedAt: Timestamp;
-  reviewedAt?: Timestamp;
+  updatedAt?: Timestamp;
   reviewedBy?: string;
+  reviewedAt?: Timestamp;
   comments?: string;
 }
 

@@ -1305,4 +1305,159 @@ export const getTeamAttendanceStats = async (teamId: string) => {
     console.error('Error calculating attendance stats:', error);
     throw new Error('Failed to calculate attendance stats');
   }
+};
+
+// Get matches that need score submission or have pending player stats
+export const getPendingMatchStats = async (teamId: string) => {
+  try {
+    console.log('Searching for pending match stats for team:', teamId);
+    
+    // First, get all completed matches from this team that don't have final stats
+    const eventsRef = collection(db, 'events');
+    const q = query(
+      eventsRef,
+      where('teamId', '==', teamId),
+      where('type', '==', 'match'),
+      where('status', '==', 'completed')
+    );
+    
+    const eventsSnapshot = await getDocs(q);
+    console.log('Found completed matches:', eventsSnapshot.docs.length);
+    
+    const matches = eventsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Event);
+    
+    // For each match, check if there's a corresponding matchStats entry with final status
+    const pendingMatches = [];
+    
+    for (const match of matches) {
+      const matchStatsRef = doc(db, 'matchStats', match.id);
+      const matchStatsSnap = await getDoc(matchStatsRef);
+      
+      if (!matchStatsSnap.exists() || matchStatsSnap.data()?.status !== 'final') {
+        console.log('Found pending match:', match.id, match.title);
+        pendingMatches.push(match);
+      }
+    }
+    
+    // Also check for matches that have ended but don't have a status of 'completed'
+    // This catches matches that haven't been properly marked as completed
+    const now = new Date();
+    const pastMatchesQ = query(
+      eventsRef,
+      where('teamId', '==', teamId),
+      where('type', '==', 'match')
+    );
+    
+    const pastMatchesSnapshot = await getDocs(pastMatchesQ);
+    const pastMatches = pastMatchesSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }) as Event)
+      .filter(match => {
+        const endTime = match.endTime?.toDate() || null;
+        return endTime && endTime < now && match.status !== 'completed';
+      });
+    
+    console.log('Found past matches without completed status:', pastMatches.length);
+    
+    // For these matches, check if they already have match stats
+    for (const match of pastMatches) {
+      const matchStatsRef = doc(db, 'matchStats', match.id);
+      const matchStatsSnap = await getDoc(matchStatsRef);
+      
+      if (!matchStatsSnap.exists() || matchStatsSnap.data()?.status !== 'final') {
+        console.log('Found past match needing stats:', match.id, match.title);
+        // Only add if not already in the pendingMatches array
+        if (!pendingMatches.some(m => m.id === match.id)) {
+          pendingMatches.push(match);
+        }
+      }
+    }
+    
+    console.log('Total pending matches found:', pendingMatches.length);
+    return pendingMatches;
+  } catch (error) {
+    console.error('Error getting pending match stats:', error);
+    throw error;
+  }
+};
+
+// Get player stats submissions that need trainer approval
+export const getPendingPlayerStats = async (teamId: string) => {
+  try {
+    console.log('Searching for pending player stats for team:', teamId);
+    
+    // First, get all match IDs for this team
+    const eventsRef = collection(db, 'events');
+    const q = query(
+      eventsRef,
+      where('teamId', '==', teamId),
+      where('type', '==', 'match')
+    );
+    
+    const eventsSnapshot = await getDocs(q);
+    const matchIds = eventsSnapshot.docs.map(doc => doc.id);
+    console.log('Found matches for team:', matchIds.length);
+    
+    if (matchIds.length === 0) {
+      console.log('No matches found for team, returning empty array');
+      return [];
+    }
+    
+    // Now get all pending player stats for these matches
+    // Firestore has a limit of 10 items in 'in' queries, so we might need multiple queries
+    let pendingStats: any[] = [];
+    
+    // Process in batches of 10
+    for (let i = 0; i < matchIds.length; i += 10) {
+      const batchIds = matchIds.slice(i, i + 10);
+      console.log(`Processing batch ${i/10 + 1} with ${batchIds.length} matches`);
+      
+      const playerStatsRef = collection(db, 'playerMatchStats');
+      const statsQuery = query(
+        playerStatsRef,
+        where('matchId', 'in', batchIds),
+        where('status', '==', 'pending')
+      );
+      
+      const statsSnapshot = await getDocs(statsQuery);
+      const batchStats = statsSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      }));
+      
+      console.log(`Found ${batchStats.length} pending stats in this batch`);
+      pendingStats = [...pendingStats, ...batchStats];
+    }
+    
+    console.log('Total pending player stats found:', pendingStats.length);
+    
+    if (pendingStats.length === 0) {
+      console.log('No pending player stats found, returning empty array');
+      return [];
+    }
+    
+    // Get match details and player names for better display
+    console.log('Enhancing pending stats with match and player details');
+    const enhancedStats = await Promise.all(pendingStats.map(async (stat: any) => {
+      const matchRef = doc(db, 'events', stat.matchId);
+      const matchSnap = await getDoc(matchRef);
+      const match = matchSnap.exists() ? matchSnap.data() : null;
+      
+      const playerRef = doc(db, 'users', stat.playerId);
+      const playerSnap = await getDoc(playerRef);
+      const player = playerSnap.exists() ? playerSnap.data() : null;
+      
+      return {
+        ...stat,
+        matchTitle: match?.title || 'Unknown Match',
+        matchDate: match?.startTime || null,
+        playerName: player?.name || 'Unknown Player',
+      };
+    }));
+    
+    console.log('Enhanced stats:', enhancedStats.length);
+    return enhancedStats;
+  } catch (error) {
+    console.error('Error getting pending player stats:', error);
+    throw error;
+  }
 }; 

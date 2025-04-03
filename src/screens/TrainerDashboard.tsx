@@ -17,7 +17,16 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, MainTabParamList } from '../types/navigation';
 import { CompositeNavigationProp } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { getTeamMembers, getTeamEvents, auth, getUser, getEventAttendanceStatus, getTeamAttendanceStats } from '../config/firebase';
+import { 
+  getTeamMembers, 
+  getTeamEvents, 
+  auth, 
+  getUser, 
+  getEventAttendanceStatus, 
+  getTeamAttendanceStats,
+  getPendingMatchStats,
+  getPendingPlayerStats
+} from '../config/firebase';
 import { Event, TeamMember } from '../types/database';
 import { startOfDay, endOfDay } from '../utils/dateUtils';
 import { theme } from '../theme';
@@ -77,6 +86,9 @@ export const TrainerDashboard = () => {
   } | null>(null);
   const [playerCount, setPlayerCount] = useState(0);
   const [eventCount, setEventCount] = useState(0);
+  const [pendingMatchStats, setPendingMatchStats] = useState<Event[]>([]);
+  const [pendingPlayerStats, setPendingPlayerStats] = useState<any[]>([]);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   const loadTeamData = useCallback(async () => {
     try {
@@ -137,8 +149,10 @@ export const TrainerDashboard = () => {
 
   useFocusEffect(
     useCallback(() => {
+      console.log('Dashboard focused - loading match statistics data');
       loadTeamData();
-    }, [loadTeamData])
+      loadMatchStatsData();
+    }, [])
   );
 
   useEffect(() => {
@@ -146,6 +160,7 @@ export const TrainerDashboard = () => {
     loadTodayEvents();
     loadAttendanceStats();
     loadCounts();
+    loadMatchStatsData();
   }, [loadTeamData]);
 
   const checkAttendanceStatus = async (eventId: string) => {
@@ -197,6 +212,41 @@ export const TrainerDashboard = () => {
     }
   };
 
+  const loadMatchStatsData = async () => {
+    try {
+      setLoadingStats(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.log('No current user found when loading match stats');
+        return;
+      }
+
+      const userData = await getUser(currentUser.uid);
+      if (!userData?.teamId) {
+        console.log('No team ID found for current user');
+        return;
+      }
+
+      console.log('Loading pending match stats for team:', userData.teamId);
+      
+      // Get matches that need score submission
+      const pendingMatches = await getPendingMatchStats(userData.teamId);
+      console.log('Pending matches that need scores:', pendingMatches.length);
+      setPendingMatchStats(pendingMatches);
+
+      // Get player stats that need approval
+      const pendingStats = await getPendingPlayerStats(userData.teamId);
+      console.log('Pending player stats that need approval:', pendingStats.length);
+      setPendingPlayerStats(pendingStats);
+      
+      console.log('Match stats data loaded successfully');
+    } catch (error) {
+      console.error('Error loading match stats data:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
   const loadCounts = async () => {
     try {
       if (!user?.teamId) return;
@@ -215,30 +265,75 @@ export const TrainerDashboard = () => {
 
   const renderInjuredPlayersWarning = () => {
     if (injuredPlayersInMatches.length === 0) return null;
-
+    
     return (
-      <TouchableOpacity 
-        style={styles.warningSection}
-        onPress={() => navigation.navigate('Team', { selectedFilter: 'injured' })}
-      >
+      <View style={styles.warningSection}>
         <View style={styles.warningContent}>
-          <Ionicons name="warning" size={24} color="#ff4444" />
+          <Ionicons name="medical" size={24} color="#ff4444" />
           <View style={styles.warningTextContainer}>
             <Text style={styles.warningTitle}>Injured Players in Upcoming Matches</Text>
             <Text style={styles.warningText}>
-              {injuredPlayersInMatches.length} injured player{injuredPlayersInMatches.length > 1 ? 's are' : ' is'} assigned to matches this week
+              {injuredPlayersInMatches.length} player{injuredPlayersInMatches.length !== 1 ? 's' : ''} marked as injured {injuredPlayersInMatches.length !== 1 ? 'are' : 'is'} scheduled to play in upcoming matches
             </Text>
-            {injuredPlayersInMatches.map((player, index) => (
+            {injuredPlayersInMatches.map(player => (
               <Text key={player.id} style={styles.warningMatchText}>
-                • {player.name} - {player.daysUntilMatch === 0 ? 'Today' : 
-                   player.daysUntilMatch === 1 ? 'Tomorrow' : 
-                   `in ${player.daysUntilMatch} days`}
+                • {player.name} - {player.matchTitle} ({player.daysUntilMatch} day{player.daysUntilMatch !== 1 ? 's' : ''} away)
               </Text>
             ))}
           </View>
-          <Ionicons name="chevron-forward" size={24} color="#ff4444" />
         </View>
-      </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderMatchStatsNotifications = () => {
+    const hasPendingMatchStats = pendingMatchStats.length > 0;
+    const hasPendingPlayerStats = pendingPlayerStats.length > 0;
+    
+    if (!hasPendingMatchStats && !hasPendingPlayerStats) return null;
+    
+    return (
+      <View style={styles.warningSection}>
+        <View style={styles.warningContent}>
+          <Ionicons name="stats-chart" size={24} color="#ff4444" />
+          <View style={styles.warningTextContainer}>
+            <Text style={styles.warningTitle}>Match Statistics</Text>
+            
+            {hasPendingMatchStats && (
+              <TouchableOpacity 
+                onPress={() => {
+                  if (pendingMatchStats.length > 0) {
+                    navigation.navigate('UploadMatchStats', { 
+                      matchId: pendingMatchStats[0].id,
+                    });
+                  }
+                }}
+              >
+                <Text style={styles.warningText}>
+                  {pendingMatchStats.length} match{pendingMatchStats.length !== 1 ? 'es' : ''} need{pendingMatchStats.length === 1 ? 's' : ''} final score submission
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            {hasPendingPlayerStats && (
+              <TouchableOpacity 
+                onPress={() => {
+                  if (pendingPlayerStats.length > 0) {
+                    navigation.navigate('MatchStats', { 
+                      matchId: pendingPlayerStats[0].matchId,
+                      isHomeGame: true,
+                    });
+                  }
+                }}
+              >
+                <Text style={styles.warningText}>
+                  {pendingPlayerStats.length} player stat{pendingPlayerStats.length !== 1 ? 's' : ''} pending approval
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
     );
   };
 
@@ -260,6 +355,8 @@ export const TrainerDashboard = () => {
           </View>
 
           {renderInjuredPlayersWarning()}
+          
+          {renderMatchStatsNotifications()}
 
           <View style={styles.quickActions}>
             <TouchableOpacity 
@@ -315,6 +412,60 @@ export const TrainerDashboard = () => {
               </TouchableOpacity>
             </View>
           </View>
+
+          {(pendingMatchStats.length > 0 || pendingPlayerStats.length > 0) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Pending Match Stats
+                {loadingStats && <ActivityIndicator size="small" color={theme.colors.primary} style={{marginLeft: 10}} />}
+              </Text>
+              
+              {pendingMatchStats.length > 0 && (
+                <TouchableOpacity 
+                  style={styles.pendingStatsItem}
+                  onPress={() => {
+                    navigation.navigate('UploadMatchStats', { 
+                      matchId: pendingMatchStats[0].id,
+                    });
+                  }}
+                >
+                  <View style={styles.pendingStatsIconContainer}>
+                    <Ionicons name="trophy-outline" size={20} color={theme.colors.primary} />
+                  </View>
+                  <View style={styles.pendingStatsContent}>
+                    <Text style={styles.pendingStatsTitle}>Score submission needed</Text>
+                    <Text style={styles.pendingStatsSubtitle}>
+                      {pendingMatchStats[0].title || 'Match'} - {pendingMatchStats.length} total
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+                </TouchableOpacity>
+              )}
+              
+              {pendingPlayerStats.length > 0 && (
+                <TouchableOpacity 
+                  style={[styles.pendingStatsItem, pendingMatchStats.length > 0 && styles.pendingStatsItemMargin]}
+                  onPress={() => {
+                    navigation.navigate('MatchStats', { 
+                      matchId: pendingPlayerStats[0].matchId,
+                      isHomeGame: true,
+                    });
+                  }}
+                >
+                  <View style={styles.pendingStatsIconContainer}>
+                    <Ionicons name="clipboard-outline" size={20} color={theme.colors.primary} />
+                  </View>
+                  <View style={styles.pendingStatsContent}>
+                    <Text style={styles.pendingStatsTitle}>Player stats approval needed</Text>
+                    <Text style={styles.pendingStatsSubtitle}>
+                      {pendingPlayerStats[0].playerName || 'Player'} - {pendingPlayerStats.length} total
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -784,5 +935,75 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: 14,
     fontWeight: '500',
+  },
+  matchStatsSection: {
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ff4444',
+  },
+  matchStatsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  matchStatsTextContainer: {
+    flex: 1,
+  },
+  matchStatsTitle: {
+    color: '#ff4444',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  matchStatsNotification: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ff4444',
+    borderRadius: 8,
+  },
+  matchStatsText: {
+    color: '#ff4444',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  pendingStatsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: 'rgba(225, 119, 119, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(225, 119, 119, 0.3)',
+    borderRadius: 8,
+  },
+  pendingStatsIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(225, 119, 119, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  pendingStatsContent: {
+    flex: 1,
+  },
+  pendingStatsTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  pendingStatsSubtitle: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  pendingStatsItemMargin: {
+    marginTop: 12,
   },
 });

@@ -18,6 +18,10 @@ export const MatchStatsDisplay: React.FC<MatchStatsDisplayProps> = ({
   
   const totalGoals = approvedStats.reduce((sum, stat) => sum + stat.stats.goals, 0);
   const totalAssists = approvedStats.reduce((sum, stat) => sum + stat.stats.assists, 0);
+  const totalSaves = approvedStats.reduce((sum, stat) => 
+    sum + (stat.stats.isGoalkeeper ? (stat.stats.goalkeeperStats?.saves || 0) : 0), 0);
+  const cleanSheets = approvedStats.filter(stat => 
+    stat.stats.isGoalkeeper && stat.stats.goalkeeperStats?.cleanSheet).length;
 
   return (
     <ScrollView style={styles.container}>
@@ -46,46 +50,44 @@ export const MatchStatsDisplay: React.FC<MatchStatsDisplayProps> = ({
           <Text style={styles.statValue}>{totalAssists}</Text>
           <Text style={styles.statLabel}>Total Assists</Text>
         </View>
+
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{totalSaves}</Text>
+          <Text style={styles.statLabel}>Total Saves</Text>
+        </View>
+
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{cleanSheets}</Text>
+          <Text style={styles.statLabel}>Clean Sheets</Text>
+        </View>
       </View>
 
       <Text style={[styles.title, styles.playerStatsTitle]}>Player Statistics</Text>
-      
-      {approvedStats.map((stat) => (
+      {approvedStats.map(stat => (
         <View key={stat.id} style={styles.playerCard}>
-          <Text style={styles.playerName}>{playerNames[stat.playerId] || 'Unknown Player'}</Text>
-          
-          <View style={styles.statsGrid}>
-            <View style={styles.statGridItem}>
-              <Text style={styles.statGridValue}>{stat.stats.goals}</Text>
-              <Text style={styles.statGridLabel}>Goals</Text>
+          <Text style={styles.playerName}>{playerNames[stat.playerId]}</Text>
+          <View style={styles.playerStats}>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Goals:</Text>
+              <Text style={styles.statValue}>{stat.stats.goals}</Text>
             </View>
-            
-            <View style={styles.statGridItem}>
-              <Text style={styles.statGridValue}>{stat.stats.assists}</Text>
-              <Text style={styles.statGridLabel}>Assists</Text>
+            <View style={styles.statRow}>
+              <Text style={styles.statLabel}>Assists:</Text>
+              <Text style={styles.statValue}>{stat.stats.assists}</Text>
             </View>
-            
-            <View style={styles.statGridItem}>
-              <Text style={styles.statGridValue}>{stat.stats.minutesPlayed}'</Text>
-              <Text style={styles.statGridLabel}>Minutes</Text>
-            </View>
-            
-            <View style={styles.statGridItem}>
-              <Text style={styles.statGridValue}>{stat.stats.shotsOnTarget}</Text>
-              <Text style={styles.statGridLabel}>Shots</Text>
-            </View>
-          </View>
-
-          {stat.stats.saves !== undefined && (
-            <View style={styles.keeperStats}>
-              <Text style={styles.statLabel}>Saves: {stat.stats.saves}</Text>
-              {stat.stats.cleanSheet && (
-                <View style={styles.cleanSheetBadge}>
-                  <Text style={styles.cleanSheetText}>Clean Sheet</Text>
+            {stat.stats.isGoalkeeper && stat.stats.goalkeeperStats && (
+              <>
+                <View style={styles.statRow}>
+                  <Text style={styles.statLabel}>Saves:</Text>
+                  <Text style={styles.statValue}>{stat.stats.goalkeeperStats.saves}</Text>
                 </View>
-              )}
-            </View>
-          )}
+                <View style={styles.statRow}>
+                  <Text style={styles.statLabel}>Clean Sheet:</Text>
+                  <Text style={styles.statValue}>{stat.stats.goalkeeperStats.cleanSheet ? 'Yes' : 'No'}</Text>
+                </View>
+              </>
+            )}
+          </View>
         </View>
       ))}
     </ScrollView>
@@ -174,39 +176,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     marginBottom: theme.spacing.md,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -theme.spacing.xs,
-  },
-  statGridItem: {
-    width: '25%',
-    padding: theme.spacing.xs,
-    alignItems: 'center',
-  },
-  statGridValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-  },
-  statGridLabel: {
-    color: theme.colors.text.primary,
-    fontSize: 12,
-  },
-  keeperStats: {
+  playerStats: {
     marginTop: theme.spacing.md,
+  },
+  statRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  cleanSheetBadge: {
-    backgroundColor: theme.colors.success,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.borderRadius.sm,
-  },
-  cleanSheetText: {
-    color: theme.colors.text.primary,
-    fontWeight: 'bold',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
   },
 }); 

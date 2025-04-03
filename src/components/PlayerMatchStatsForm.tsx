@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, Text, Switch } from 'react-native';
+import { View, TextInput, TouchableOpacity, StyleSheet, Text, Switch, Alert } from 'react-native';
 import { theme } from '../theme';
 import { PlayerMatchStats } from '../types/database';
 
@@ -8,234 +8,293 @@ interface PlayerMatchStatsFormProps {
   playerId: string;
   onSubmit: (stats: Omit<PlayerMatchStats, 'id' | 'status' | 'submittedAt'>) => void;
   isGoalkeeper?: boolean;
+  hideSubmitButton?: boolean;
+  initialStats?: PlayerMatchStats['stats'];
 }
-
-type Stats = {
-  goals: number;
-  assists: number;
-  shotsOnTarget: number;
-  yellowCards: number;
-  redCards: number;
-  cleanSheet: boolean;
-};
 
 export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
   matchId,
   playerId,
   onSubmit,
-  isGoalkeeper,
+  isGoalkeeper: initialIsGoalkeeper = false,
+  hideSubmitButton = false,
+  initialStats,
 }) => {
-  const [stats, setStats] = useState<Stats>({
+  const [stats, setStats] = useState<PlayerMatchStats['stats']>(initialStats || {
     goals: 0,
     assists: 0,
     shotsOnTarget: 0,
     yellowCards: 0,
     redCards: 0,
     cleanSheet: false,
+    minutesPlayed: 90,
+      saves: 0,
+    goalsConceded: 0
   });
-  const [showYellowCards, setShowYellowCards] = useState(false);
-  const [showRedCards, setShowRedCards] = useState(false);
+
+  const validateStats = (): boolean => {
+    // Basic validation rules
+    if (stats.goals < 0 || stats.goals > 10) {
+      Alert.alert('Invalid Goals', 'Goals must be between 0 and 10');
+      return false;
+    }
+    if (stats.assists < 0 || stats.assists > 10) {
+      Alert.alert('Invalid Assists', 'Assists must be between 0 and 10');
+      return false;
+    }
+    if (stats.shotsOnTarget < 0 || stats.shotsOnTarget > 20) {
+      Alert.alert('Invalid Shots', 'Shots on target must be between 0 and 20');
+      return false;
+    }
+    if (stats.yellowCards < 0 || stats.yellowCards > 2) {
+      Alert.alert('Invalid Yellow Cards', 'Yellow cards must be between 0 and 2');
+      return false;
+    }
+    if (stats.redCards < 0 || stats.redCards > 1) {
+      Alert.alert('Invalid Red Cards', 'Red cards must be 0 or 1');
+      return false;
+    }
+    if (stats.minutesPlayed < 0 || stats.minutesPlayed > 120) {
+      Alert.alert('Invalid Minutes', 'Minutes played must be between 0 and 120');
+      return false;
+    }
+    if (initialIsGoalkeeper) {
+      if (stats.saves < 0 || stats.saves > 20) {
+        Alert.alert('Invalid Saves', 'Saves must be between 0 and 20');
+        return false;
+      }
+      if (stats.goalsConceded < 0 || stats.goalsConceded > 10) {
+        Alert.alert('Invalid Goals Conceded', 'Goals conceded must be between 0 and 10');
+        return false;
+      }
+    }
+    return true;
+  };
 
   const handleSubmit = () => {
-    onSubmit({
+    if (!validateStats()) return;
+
+    Alert.alert(
+      'Confirm Submission',
+      'Are you sure you want to submit these statistics?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Submit',
+          onPress: () => onSubmit({
       matchId,
       playerId,
-      stats: {
-        ...stats,
-        minutesPlayed: 90, // Default to full match
-      },
-    });
+            stats
+          }),
+        },
+      ]
+    );
   };
+
+  const StatInput = ({ 
+    label, 
+    value, 
+    onIncrement, 
+    onDecrement,
+    helpText,
+    maxValue = 10,
+    minValue = 0
+  }: {
+    label: string;
+    value: number;
+    onIncrement: () => void;
+    onDecrement: () => void;
+    helpText?: string;
+    maxValue?: number;
+    minValue?: number;
+  }) => (
+    <View style={styles.statItem}>
+      <View style={styles.statHeader}>
+        <Text style={styles.statLabel}>{label}</Text>
+        {helpText && (
+          <Text style={styles.helpText}>{helpText}</Text>
+        )}
+      </View>
+      <View style={styles.statInputContainer}>
+        <TouchableOpacity 
+          style={[styles.statButton, value <= minValue && styles.disabledButton]}
+          onPress={onDecrement}
+          disabled={value <= minValue}
+        >
+          <Text style={[styles.statButtonText, value <= minValue && styles.disabledButtonText]}>-</Text>
+        </TouchableOpacity>
+        <Text style={styles.statValue}>{value}</Text>
+        <TouchableOpacity 
+          style={[styles.statButton, value >= maxValue && styles.disabledButton]}
+          onPress={onIncrement}
+          disabled={value >= maxValue}
+        >
+          <Text style={[styles.statButtonText, value >= maxValue && styles.disabledButtonText]}>+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
       <View style={styles.statsGrid}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Goals</Text>
-          <View style={styles.statInputContainer}>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
-            >
-              <Text style={styles.statButtonText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.statValue}>{stats.goals}</Text>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
-            >
-              <Text style={styles.statButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <StatInput
+          label="Goals"
+          value={stats.goals}
+          onIncrement={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
+          helpText="Number of goals scored"
+          maxValue={10}
+        />
 
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Assists</Text>
-          <View style={styles.statInputContainer}>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
-            >
-              <Text style={styles.statButtonText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.statValue}>{stats.assists}</Text>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
-            >
-              <Text style={styles.statButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <StatInput
+          label="Assists"
+          value={stats.assists}
+          onIncrement={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
+          helpText="Number of assists made"
+          maxValue={10}
+        />
 
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Shots on Target</Text>
-          <View style={styles.statInputContainer}>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
-            >
-              <Text style={styles.statButtonText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.statValue}>{stats.shotsOnTarget}</Text>
-            <TouchableOpacity 
-              style={styles.statButton}
-              onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
-            >
-              <Text style={styles.statButtonText}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <StatInput
+          label="Shots on Target"
+          value={stats.shotsOnTarget}
+          onIncrement={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
+          helpText="Number of shots that were on target"
+          maxValue={20}
+        />
 
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Yellow Cards</Text>
-          <Switch
-            value={showYellowCards}
-            onValueChange={setShowYellowCards}
-          />
-          {showYellowCards && (
-            <View style={styles.cardInputContainer}>
-              <TouchableOpacity 
-                style={styles.statButton}
-                onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
-              >
-                <Text style={styles.statButtonText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.statValue}>{stats.yellowCards}</Text>
-              <TouchableOpacity 
-                style={styles.statButton}
-                onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
-              >
-                <Text style={styles.statButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        <StatInput
+          label="Yellow Cards"
+          value={stats.yellowCards}
+          onIncrement={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
+          onDecrement={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
+          helpText="Number of yellow cards received"
+          maxValue={2}
+        />
 
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Red Cards</Text>
-          <Switch
-            value={showRedCards}
-            onValueChange={setShowRedCards}
-          />
-          {showRedCards && (
-            <View style={styles.cardInputContainer}>
-              <TouchableOpacity 
-                style={styles.statButton}
-                onPress={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
-              >
-                <Text style={styles.statButtonText}>-</Text>
-              </TouchableOpacity>
-              <Text style={styles.statValue}>{stats.redCards}</Text>
-              <TouchableOpacity 
-                style={styles.statButton}
-                onPress={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
-              >
-                <Text style={styles.statButtonText}>+</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        <StatInput
+          label="Red Cards"
+          value={stats.redCards}
+          onIncrement={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
+          onDecrement={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
+          helpText="Number of red cards received"
+          maxValue={1}
+        />
 
-        {isGoalkeeper && (
-          <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Clean Sheet</Text>
-            <Switch
-              value={stats.cleanSheet}
-              onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
+        {initialIsGoalkeeper && (
+          <>
+            <StatInput
+              label="Saves"
+              value={stats.saves}
+              onIncrement={() => setStats(prev => ({ ...prev, saves: prev.saves + 1 }))}
+              onDecrement={() => setStats(prev => ({ ...prev, saves: Math.max(0, prev.saves - 1) }))}
+              helpText="Number of saves made"
+              maxValue={20}
             />
-          </View>
+
+            <StatInput
+              label="Goals Conceded"
+              value={stats.goalsConceded}
+              onIncrement={() => setStats(prev => ({ ...prev, goalsConceded: prev.goalsConceded + 1 }))}
+              onDecrement={() => setStats(prev => ({ ...prev, goalsConceded: Math.max(0, prev.goalsConceded - 1) }))}
+              helpText="Number of goals conceded"
+              maxValue={10}
+            />
+
+            <View style={styles.statItem}>
+              <View style={styles.statHeader}>
+                <Text style={styles.statLabel}>Clean Sheet</Text>
+                <Text style={styles.helpText}>Did not concede any goals</Text>
+              </View>
+              <Switch
+                value={stats.cleanSheet}
+                onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
+              />
+            </View>
+          </>
         )}
       </View>
 
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitText}>Submit Statistics</Text>
-      </TouchableOpacity>
+      {!hideSubmitButton && (
+        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+          <Text style={styles.submitButtonText}>Submit Statistics</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    gap: theme.spacing.md,
+    padding: 8,
   },
   statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.md,
+    gap: 12,
   },
   statItem: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: theme.colors.background,
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.sm,
+    backgroundColor: theme.colors.card,
+    padding: 12,
+    borderRadius: 6,
+  },
+  statHeader: {
+    marginBottom: 8,
   },
   statLabel: {
-    color: theme.colors.text.secondary,
     fontSize: 14,
-    marginBottom: theme.spacing.xs,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+  },
+  helpText: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
   },
   statInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: theme.spacing.xs,
-  },
-  statButton: {
-    backgroundColor: theme.colors.card,
-    width: 36,
-    height: 36,
-    borderRadius: theme.borderRadius.sm,
-    alignItems: 'center',
     justifyContent: 'center',
   },
+  statButton: {
+    backgroundColor: theme.colors.primary,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: theme.colors.disabled,
+  },
   statButtonText: {
-    color: theme.colors.text.primary,
+    color: theme.colors.text.inverse,
     fontSize: 20,
     fontWeight: 'bold',
   },
+  disabledButtonText: {
+    color: theme.colors.text.secondary,
+  },
   statValue: {
-    color: theme.colors.text.primary,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginHorizontal: 16,
     minWidth: 40,
     textAlign: 'center',
   },
   submitButton: {
     backgroundColor: theme.colors.primary,
-    padding: theme.spacing.md,
-    borderRadius: theme.borderRadius.sm,
+    padding: 14,
+    borderRadius: 6,
     alignItems: 'center',
-    marginTop: theme.spacing.md,
+    marginTop: 16,
   },
-  submitText: {
-    color: theme.colors.text.primary,
+  submitButtonText: {
+    color: theme.colors.text.inverse,
     fontSize: 16,
     fontWeight: 'bold',
   },
