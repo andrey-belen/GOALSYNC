@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
-import { getPendingInvitations, acceptInvitation, declineInvitation, getTeamEvents, getTeamAttendanceStats } from '../config/firebase';
+import { getPendingInvitations, acceptInvitation, declineInvitation, getTeamEvents, getTeamAttendanceStats, getPlayerStatsNotifications } from '../config/firebase';
 import { theme } from '../theme';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,6 +21,7 @@ import { PlayerAttendanceCard } from '../components/PlayerAttendanceCard';
 import { PlayerPositionCard } from '../components/PlayerPositionCard';
 import { AnnouncementsCard } from '../components/AnnouncementsCard';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
+import { NotificationsSection } from '../components/NotificationsSection';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -60,6 +61,12 @@ export const PlayerDashboard = () => {
     attendance: { present: number; total: number };
     percentage: number;
   } | null>(null);
+  const [statsNotifications, setStatsNotifications] = useState<{
+    pendingApproval: any[];
+    approved: any[];
+    rejected: any[];
+    needsSubmission: any[];
+  } | null>(null);
   const navigation = useNavigation<NavigationProp>();
 
   useEffect(() => {
@@ -74,6 +81,12 @@ export const PlayerDashboard = () => {
       loadPlayerStats();
     }
   }, [user?.teamId]);
+
+  useEffect(() => {
+    if (user?.id) {
+      loadStatsNotifications();
+    }
+  }, [user?.id]);
 
   const loadEvents = async () => {
     try {
@@ -133,6 +146,17 @@ export const PlayerDashboard = () => {
       }
     } catch (error) {
       console.error('Error loading player stats:', error);
+    }
+  };
+
+  const loadStatsNotifications = async () => {
+    try {
+      if (!user?.id) return;
+      
+      const stats = await getPlayerStatsNotifications(user.id);
+      setStatsNotifications(stats);
+    } catch (error) {
+      console.error('Error loading stats notifications:', error);
     }
   };
 
@@ -258,29 +282,150 @@ export const PlayerDashboard = () => {
     </TouchableOpacity>
   );
 
+  const renderStatsNotifications = () => {
+    if (!statsNotifications) return null;
+    
+    const needsSubmissionCount = statsNotifications.needsSubmission.length;
+    const pendingCount = statsNotifications.pendingApproval.length;
+    const rejectedCount = statsNotifications.rejected.length;
+    
+    if (needsSubmissionCount === 0 && pendingCount === 0 && rejectedCount === 0) {
+      return null;
+    }
+    
+    return (
+      <View style={styles.statsNotificationsSection}>
+        <Text style={styles.sectionTitle}>Match Statistics</Text>
+        
+        {needsSubmissionCount > 0 && (
+          <TouchableOpacity 
+            style={styles.notificationItem}
+            onPress={() => {
+              navigation.navigate('MatchStats', {
+                matchId: statsNotifications.needsSubmission[0].id,
+                isHomeGame: true,
+              });
+            }}
+          >
+            <View style={[styles.notificationIcon, { backgroundColor: `${theme.colors.warning}20` }]}>
+              <Ionicons name="create-outline" size={20} color={theme.colors.warning} />
+            </View>
+            <View style={styles.notificationContent}>
+              <Text style={styles.notificationTitle}>
+                Submit Match Statistics
+              </Text>
+              <Text style={styles.notificationMessage}>
+                {needsSubmissionCount} match{needsSubmissionCount !== 1 ? 'es' : ''} waiting for your statistics
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+        )}
+        
+        {pendingCount > 0 && (
+          <TouchableOpacity 
+            style={[styles.notificationItem, needsSubmissionCount > 0 && styles.notificationItemMargin]}
+            onPress={() => {
+              navigation.navigate('MatchStats', {
+                matchId: statsNotifications.pendingApproval[0].matchId,
+                isHomeGame: true,
+              });
+            }}
+          >
+            <View style={[styles.notificationIcon, { backgroundColor: `${theme.colors.primary}20` }]}>
+              <Ionicons name="time-outline" size={20} color={theme.colors.primary} />
+            </View>
+            <View style={styles.notificationContent}>
+              <Text style={styles.notificationTitle}>
+                Pending Approval
+              </Text>
+              <Text style={styles.notificationMessage}>
+                {pendingCount} stat submission{pendingCount !== 1 ? 's' : ''} pending trainer approval
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+        )}
+        
+        {rejectedCount > 0 && (
+          <TouchableOpacity 
+            style={[
+              styles.notificationItem, 
+              (needsSubmissionCount > 0 || pendingCount > 0) && styles.notificationItemMargin
+            ]}
+            onPress={() => {
+              navigation.navigate('MatchStats', {
+                matchId: statsNotifications.rejected[0].matchId,
+                isHomeGame: true,
+              });
+            }}
+          >
+            <View style={[styles.notificationIcon, { backgroundColor: `${theme.colors.error}20` }]}>
+              <Ionicons name="close-circle-outline" size={20} color={theme.colors.error} />
+            </View>
+            <View style={styles.notificationContent}>
+              <Text style={styles.notificationTitle}>
+                Stats Rejected
+              </Text>
+              <Text style={styles.notificationMessage}>
+                {rejectedCount} stat submission{rejectedCount !== 1 ? 's were' : ' was'} rejected and need{rejectedCount === 1 ? 's' : ''} revision
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaWrapper>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <Text style={styles.greeting}>Hi, {user?.name?.split(' ')[0]}!</Text>
-            <TouchableOpacity style={styles.avatar}>
+            <Text style={styles.greeting}>
+              Hi, {user?.name?.split(' ')[0] || 'Player'}!
+            </Text>
+            <TouchableOpacity 
+              style={styles.avatar}
+              onPress={() => navigation.navigate('Profile')}
+            >
               <Text style={styles.avatarText}>{user?.name?.[0]?.toUpperCase()}</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.nextMatch}>
-            {upcomingEvents.find(e => e.type === 'match') 
-              ? `Next match: ${format(upcomingEvents.find(e => e.type === 'match')!.startTime.toDate(), 'EEEE h:mm a')}`
-              : 'No upcoming matches'
-            }
-          </Text>
+          <Text style={styles.teamName}>{user?.teamId ? 'Team XYZ' : 'No Team'}</Text>
         </View>
 
         {loading ? (
-          <ActivityIndicator style={styles.loader} color={theme.colors.primary} />
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
         ) : (
           <>
             {renderInvitations()}
+
+            <View style={styles.statsRow}>
+              <PlayerAttendanceCard 
+                attendanceRate={playerStats?.percentage || 0}
+                present={playerStats?.attendance?.present || 0}
+                total={playerStats?.attendance?.total || 0}
+              />
+              <PlayerPositionCard position={user?.position || 'Unknown'} />
+            </View>
+
+            {renderStatsNotifications()}
+
+            {/* Player Notifications */}
+            {user?.id && (
+              <NotificationsSection 
+                userId={user.id}
+                title="Recent Notifications"
+                limit={3}
+                showViewAll={true}
+                onViewAll={() => navigation.navigate('Notifications')}
+              />
+            )}
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Team Updates</Text>
@@ -309,6 +454,17 @@ export const PlayerDashboard = () => {
                   position={user?.position}
                 />
               </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Upcoming Events</Text>
+              {upcomingEvents.length > 0 ? (
+                upcomingEvents.map(event => renderEventCard(event))
+              ) : (
+                <View style={styles.noEventsContainer}>
+                  <Text style={styles.noEventsText}>No upcoming events</Text>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -340,7 +496,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.text.primary,
   },
-  nextMatch: {
+  teamName: {
     color: theme.colors.text.secondary,
     fontSize: 16,
   },
@@ -413,8 +569,15 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  loader: {
-    marginTop: 20,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: theme.colors.text.primary,
+    fontSize: 16,
+    marginTop: 12,
   },
   invitationItem: {
     backgroundColor: '#2a305e',
@@ -473,5 +636,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 15,
     paddingHorizontal: 0,
+  },
+  statsNotificationsSection: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.background,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.sm,
+  },
+  notificationItemMargin: {
+    marginTop: theme.spacing.sm,
+  },
+  notificationIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing.md,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginBottom: 2,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
   },
 }); 

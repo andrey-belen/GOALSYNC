@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, Text, ScrollView, Alert } from 'react-native';
-import { collection, query, where, getDocs, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, Timestamp, getDoc, setDoc } from 'firebase/firestore';
 import { theme } from '../theme';
 import { MatchStats, PlayerMatchStats } from '../types/database';
 import { NavigationProp } from '@react-navigation/native';
@@ -14,12 +14,15 @@ interface TrainerMatchStatsFormProps {
   setPlayerStats: React.Dispatch<React.SetStateAction<PlayerMatchStats[]>>;
   playerNames: Record<string, string>;
   onSubmitScore: (stats: Omit<MatchStats, 'id' | 'playerStats'>) => void;
-  onReviewPlayerStats: (statId: string, approved: boolean) => void;
+  onReviewPlayerStats: (statId: string, approved: boolean, playerId: string, comment?: string) => void;
   onDeletePlayerStats: (statId: string) => void;
   existingScore?: { home: number; away: number };
   existingPossession?: number;
   teamId: string;
   navigation: NavigationProp<any>;
+  matchStats?: MatchStats | null;
+  setMatchStats?: React.Dispatch<React.SetStateAction<MatchStats | null>>;
+  user?: { name: string };
 }
 
 export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
@@ -35,6 +38,9 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
   existingPossession,
   teamId,
   navigation,
+  matchStats,
+  setMatchStats,
+  user,
 }) => {
   const [score, setScore] = useState({
     home: existingScore?.home || 0,
@@ -45,12 +51,9 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
   const [editingStats, setEditingStats] = useState<PlayerMatchStats | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [isReleaseStatsLoading, setIsReleaseStatsLoading] = useState(false);
 
-  // Calculate total goals from approved player stats
-  const approvedStats = playerStats.filter(stat => stat.status === 'approved');
-  const totalPlayerGoals = approvedStats.reduce((sum, stat) => sum + stat.stats.goals, 0);
-
-  // Validate score against player goals
+  // Validate score 
   const validateScore = () => {
     if (score.home < 0 || score.away < 0) {
       Alert.alert('Invalid Score', 'Scores cannot be negative');
@@ -75,6 +78,8 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
         score,
         possession,
         status: 'final',
+        visibility: 'private', // Default to private when first submitted
+        allStatsComplete: checkAllStatsComplete(),
         submittedBy: trainerId,
         submittedAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
@@ -89,20 +94,178 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
     }
   };
 
+  // Check if all player stats are complete (reviewed and approved)
+  const checkAllStatsComplete = () => {
+    // If there are no player stats, they can't be complete
+    if (playerStats.length === 0) return false;
+    
+    // Check if any stats are pending or rejected
+    const pendingOrRejected = playerStats.some(
+      stat => stat.status === 'pending' || stat.status === 'rejected'
+    );
+    
+    return !pendingOrRejected;
+  };
+
+  // Check if all present players have their stats approved
+  const checkAllPresentPlayersHaveStats = async (): Promise<boolean> => {
+    try {
+      // Get match details to access attendees list
+      const eventRef = doc(db, 'events', matchId);
+      const eventDoc = await getDoc(eventRef);
+      
+      if (!eventDoc.exists()) {
+        console.error('Event not found');
+        return false;
+      }
+
+      const eventData = eventDoc.data();
+      const attendees = eventData.attendees || [];
+      
+      // If no attendance was taken, we can't verify
+      if (attendees.length === 0) {
+        return false;
+      }
+
+      // Get all the approved player stats
+      const approvedPlayerIds = playerStats
+        .filter(stat => stat.status === 'approved')
+        .map(stat => stat.playerId);
+      
+      // Check if all present players have approved stats
+      const allPresentPlayersHaveStats = attendees.every((playerId: string) => 
+        approvedPlayerIds.includes(playerId)
+      );
+      
+      return allPresentPlayersHaveStats;
+    } catch (error) {
+      console.error('Error checking present players stats:', error);
+      return false;
+    }
+  };
+
+  // Handle releasing stats to players
+  const handleReleaseStats = async () => {
+    try {
+      setIsReleaseStatsLoading(true);
+      
+      // Check if all stats are complete and approved
+      const allComplete = checkAllStatsComplete();
+      
+      if (!allComplete) {
+        Alert.alert(
+          'Incomplete Stats',
+          'Not all player statistics have been reviewed and approved. Please review all pending statistics before releasing.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      // Update the match stats document to make it publicly visible
+      const matchStatsRef = doc(db, 'matchStats', matchId);
+      await updateDoc(matchStatsRef, {
+        visibility: 'public',
+        allStatsComplete: true,
+        updatedAt: Timestamp.now()
+      });
+      
+      // Update local state to reflect the change immediately
+      if (matchStats && setMatchStats) {
+        setMatchStats({
+          ...matchStats,
+          visibility: 'public',
+          allStatsComplete: true,
+          updatedAt: Timestamp.now()
+        });
+      }
+      
+      Alert.alert(
+        'Statistics Released',
+        'Match statistics are now visible to all players.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error releasing match statistics:', error);
+      Alert.alert('Error', 'Failed to release match statistics. Please try again.');
+    } finally {
+      setIsReleaseStatsLoading(false);
+    }
+  };
+
+  // Auto-release stats when conditions are met
+  const checkAndAutoReleaseStats = async (updatedStats: PlayerMatchStats[]) => {
+    try {
+      // Only proceed if auto-release has not occurred
+      if (matchStats?.visibility === 'public') {
+        return;
+      }
+      
+      // Check if all present players have approved stats
+      const allPresentPlayersHaveStats = await checkAllPresentPlayersHaveStats();
+      
+      // If all present players have stats and all stats are approved, auto-release
+      if (allPresentPlayersHaveStats && checkAllStatsComplete()) {
+        // Update the match stats document to make it publicly visible
+        const matchStatsRef = doc(db, 'matchStats', matchId);
+        await updateDoc(matchStatsRef, {
+          visibility: 'public',
+          allStatsComplete: true,
+          updatedAt: Timestamp.now()
+        });
+        
+        // Update local state to reflect the change
+        if (matchStats && setMatchStats) {
+          setMatchStats({
+            ...matchStats,
+            visibility: 'public',
+            allStatsComplete: true,
+            updatedAt: Timestamp.now()
+          });
+        }
+        
+        // Show a more prominent alert about the auto-release
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 Statistics Auto-Released 🎉',
+            'All present players now have approved statistics. Match statistics have been automatically released to all team players.',
+            [{ text: 'Great!' }]
+          );
+        }, 500);
+      }
+    } catch (error) {
+      console.error('Error auto-releasing statistics:', error);
+    }
+  };
+
   const handleEditStats = async (updatedStats: PlayerMatchStats['stats']) => {
     if (!editingStats) return;
 
     try {
-      // Update the stats in Firestore
-      await updateDoc(doc(db, 'playerMatchStats', editingStats.id), {
+      // Update the stats in Firestore with status changed to approved if it was rejected
+      const updateData: any = {
         stats: updatedStats,
         updatedAt: Timestamp.now(),
-      });
+      };
+      
+      // If the stat was rejected, change it to approved when edited by trainer
+      if (editingStats.status === 'rejected') {
+        updateData.status = 'approved';
+        updateData.reviewedAt = Timestamp.now();
+        updateData.reviewedBy = trainerId;
+      }
+      
+      await updateDoc(doc(db, 'playerMatchStats', editingStats.id), updateData);
       
       // Update the local state to reflect changes immediately
       const updatedPlayerStats = playerStats.map(stat => 
         stat.id === editingStats.id 
-          ? { ...editingStats, stats: updatedStats }  // Keep all existing data, just update stats
+          ? { 
+              ...editingStats, 
+              stats: updatedStats,
+              status: editingStats.status === 'rejected' ? 'approved' : editingStats.status,
+              reviewedAt: editingStats.status === 'rejected' ? Timestamp.now() : editingStats.reviewedAt,
+              reviewedBy: editingStats.status === 'rejected' ? trainerId : editingStats.reviewedBy,
+            }
           : stat
       );
       setPlayerStats(updatedPlayerStats);
@@ -111,13 +274,47 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
       setIsEditModalVisible(false);
       setEditingStats(null);
 
-      // Show success message
-      Alert.alert('Success', 'Player statistics have been updated successfully');
+      // Show success message with status information
+      if (editingStats.status === 'rejected') {
+        Alert.alert('Success', 'Player statistics have been updated and approved successfully');
+        
+        // Check if we should auto-release the stats (same logic as in handleReviewPlayerStats)
+        await checkAndAutoReleaseStats(updatedPlayerStats);
+      } else {
+        Alert.alert('Success', 'Player statistics have been updated successfully');
+      }
     } catch (error) {
       console.error('Error updating stats:', error);
       Alert.alert('Error', 'Failed to update player statistics');
     }
   };
+
+  // Modify the onReviewPlayerStats prop to include auto-release check
+  const handleReviewPlayerStats = async (statId: string, approved: boolean, comment?: string) => {
+    try {
+      // Find the player stat to get the playerId
+      const playerStat = playerStats.find(stat => stat.id === statId);
+      if (!playerStat) return;
+      
+      // Call the parent component's review function with playerId
+      await onReviewPlayerStats(statId, approved, playerStat.playerId, comment);
+      
+      // Update the local state to reflect the changes
+      const updatedStats = playerStats.map(stat => 
+        stat.id === statId 
+          ? { ...stat, status: approved ? 'approved' as const : 'rejected' as const }
+          : stat
+      );
+      
+      // Check if we should auto-release the stats
+      await checkAndAutoReleaseStats(updatedStats);
+    } catch (error) {
+      console.error('Error reviewing player stats:', error);
+    }
+  };
+
+  const isStatsReleased = matchStats?.visibility === 'public';
+  const allStatsComplete = checkAllStatsComplete();
 
   return (
     <ScrollView style={styles.container}>
@@ -141,9 +338,6 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
               editable={!isSubmitting}
             />
           </View>
-          <Text style={styles.validationText}>
-            Total Player Goals: {totalPlayerGoals}
-          </Text>
           <View style={styles.possessionContainer}>
             <View style={styles.possessionContent}>
               <Text style={styles.possessionLabel}>Possession</Text>
@@ -175,7 +369,42 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Player Statistics</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Player Statistics</Text>
+          
+          {/* Stats Release Status */}
+          {matchStats && (
+            <View style={styles.statsStatusContainer}>
+              <Text style={styles.statsStatusLabel}>Status: </Text>
+              {isStatsReleased ? (
+                <View style={[styles.statusBadge, styles.releasedBadge]}>
+                  <Text style={styles.releasedText}>Released to Players</Text>
+                </View>
+              ) : (
+                <View style={[styles.statusBadge, styles.privateBadge]}>
+                  <Text style={styles.privateText}>Hidden from Players</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Release Stats Button */}
+          {matchStats && !isStatsReleased && (
+            <TouchableOpacity
+              style={[
+                styles.releaseButton,
+                (!allStatsComplete || isReleaseStatsLoading) && styles.releaseButtonDisabled
+              ]}
+              onPress={handleReleaseStats}
+              disabled={!allStatsComplete || isReleaseStatsLoading}
+            >
+              <Text style={styles.releaseButtonText}>
+                {isReleaseStatsLoading ? 'Releasing...' : 'Release Stats to Players'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <TouchableOpacity
           style={styles.addStatsButton}
           onPress={() => navigation.navigate('SubmitPlayerStats', { matchId, teamId })}
@@ -227,12 +456,13 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
         ))}
 
         {/* Pending Stats */}
+        <Text style={styles.statsSectionTitle}>Pending Review</Text>
         {playerStats.filter(stat => stat.status === 'pending').map((stat: PlayerMatchStats) => (
           <View key={stat.id} style={[styles.playerCard, styles.pendingCard]}>
             <View style={styles.playerHeader}>
               <Text style={styles.playerName}>{playerNames[stat.playerId] || 'Unknown Player'}</Text>
-              <View style={[styles.statusBadge, styles.pendingBadge]}>
-                <Text style={[styles.statusText, styles.pendingText]}>Pending Review</Text>
+              <View style={styles.statusBadge}>
+                <Text style={styles.statusText}>Pending</Text>
               </View>
             </View>
             <View style={styles.statsGrid}>
@@ -249,33 +479,52 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
                 <Text style={styles.statLabel}>Shots</Text>
               </View>
             </View>
-            <View style={styles.actionButtons}>
+            <View style={styles.reviewButtons}>
               <TouchableOpacity
-                style={[styles.actionButton, styles.editButton]}
+                style={styles.editButton}
                 onPress={() => {
                   setEditingStats(stat);
                   setIsEditModalVisible(true);
                 }}
               >
-                <Text style={styles.actionButtonText}>Edit</Text>
+                <Text style={styles.editButtonText}>Edit</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <TouchableOpacity 
                 style={[styles.actionButton, styles.approveButton]}
-                onPress={() => onReviewPlayerStats(stat.id, true)}
+                onPress={() => handleReviewPlayerStats(
+                  stat.id, 
+                  true, 
+                  `Approved by ${user?.name || 'Trainer'}`
+                )}
               >
                 <Text style={styles.actionButtonText}>Approve</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <TouchableOpacity 
                 style={[styles.actionButton, styles.rejectButton]}
-                onPress={() => onReviewPlayerStats(stat.id, false)}
+                onPress={() => {
+                  Alert.prompt(
+                    'Reject Statistics',
+                    'Please provide a reason for rejection',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel',
+                      },
+                      {
+                        text: 'Reject',
+                        onPress: (comment) => {
+                          handleReviewPlayerStats(
+                            stat.id, 
+                            false, 
+                            comment || `Rejected by ${user?.name || 'Trainer'}`
+                          );
+                        },
+                      },
+                    ],
+                  );
+                }}
               >
                 <Text style={styles.actionButtonText}>Reject</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => onDeletePlayerStats(stat.id)}
-              >
-                <Text style={styles.actionButtonText}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -616,5 +865,91 @@ const styles = StyleSheet.create({
   },
   rejectedContent: {
     opacity: 0.7,
+  },
+  sectionHeader: {
+    marginBottom: theme.spacing.md,
+  },
+  statsStatusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  statsStatusLabel: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+  },
+  releasedBadge: {
+    backgroundColor: theme.colors.success + '20',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.success,
+  },
+  releasedText: {
+    color: theme.colors.success,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  privateBadge: {
+    backgroundColor: theme.colors.warning + '20',
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.borderRadius.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.warning,
+  },
+  privateText: {
+    color: theme.colors.warning,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  releaseButton: {
+    backgroundColor: theme.colors.success,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.sm,
+    marginTop: theme.spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  releaseButtonDisabled: {
+    backgroundColor: theme.colors.card,
+    opacity: 0.7,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  releaseButtonText: {
+    color: theme.colors.background,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  statsSectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.md,
+  },
+  editButtonText: {
+    color: theme.colors.text.inverse,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  approveButtonText: {
+    color: theme.colors.text.inverse,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  rejectButtonText: {
+    color: theme.colors.text.inverse,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  reviewButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
   },
 } as const); 

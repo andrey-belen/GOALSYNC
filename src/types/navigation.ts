@@ -19,38 +19,14 @@ interface MatchDetails {
 export type RootStackParamList = {
   Splash: undefined;
   Auth: undefined;
-  Main: undefined;
-  MainTabs: NavigatorScreenParams<MainTabParamList>;
-  Login: undefined;
-  Register: { userType: UserType };
-  UserType: undefined;
+  Home: undefined;
+  MainTabs: { screen?: string };
+  Team: { teamId?: string };
+  CreateTeam: undefined;
   Profile: undefined;
-  TeamManagement: undefined;
-  Announcement: undefined;
+  EditProfile: undefined;
   Schedule: undefined;
-  QRScanner: undefined;
-  FormationTemplate: {
-    onFormationSelect: (formation: string) => void;
-  };
-  FormationSetup: {
-    formation: string;
-    players?: SelectedPlayer[];
-    onComplete?: (players: SelectedPlayer[]) => void;
-    id?: string;
-    title?: string;
-    date?: Date;
-    time?: Date;
-    location?: string;
-    isHomeGame?: boolean;
-    opponent?: string;
-    notes?: string;
-  };
-  MatchDetails: {
-    matchDetails: MatchDetails;
-  };
-  MatchConfirmation: {
-    matchDetails: MatchDetails;
-  };
+  ScheduleDetail: { eventId: string; eventType: string };
   Attendance: {
     eventId: string;
     eventType: string;
@@ -60,57 +36,58 @@ export type RootStackParamList = {
     location: string;
     notes?: string;
   };
-  Reports: undefined;
-  Formation: {
-    onFormationSet: (formation: string, positions: any) => void;
-    selectedFormation?: string;
-    selectedPositions?: string[];
-    isMatchFormation?: boolean;
-  };
-  EventDetails: {
-    eventId: string;
-    title: string;
-    type: 'training' | 'match' | 'meeting';
-    date: Date;
-    time: Date;
-    location: string;
-    notes?: string;
-  };
-  EditEvent: { eventId: string };
-  CreateEvent: undefined;
-  Chat: { teamId: string };
   AttendanceDetails: undefined;
-  ForgotPassword: undefined;
-  PlayerAttendanceHistory: {
-    userId: string;
-    userName: string;
-    stats: {
-      teamId: string;
-      attendance: {
-        present: number;
-        total: number;
-      };
-      percentage: number;
-    };
-  };
+  ConnectPlayers: undefined;
+  PlayerProfile: { playerId: string };
   AllAnnouncements: undefined;
-  AnnouncementDetails: {
-    announcement: Announcement;
+  Announcement: undefined;
+  Chat: undefined;
+  FormationSetup: {
+    formation: string;
+    players: Array<{
+      id: string;
+      name: string;
+      position?: string;
+      number?: string;
+    }>;
+    onComplete: (positions: any) => void;
+  };
+  LineupScreen: {
+    matchId: string;
+    teamId: string;
+  };
+  MatchDetails: {
+    matchDetails: {
+      id: string;
+      title: string;
+      date: Date;
+      time: Date;
+      location: string;
+      isHomeGame: boolean;
+      opponent: string;
+      formation: string;
+      players: Array<{
+        id: string;
+        name: string;
+        position?: string;
+        number?: string;
+      }>;
+      notes?: string;
+    };
   };
   MatchStats: {
     matchId: string;
     isHomeGame: boolean;
-    refreshStats?: boolean;
   };
   UploadMatchStats: {
     matchId: string;
   };
   SubmitPlayerStats: {
     matchId: string;
-    teamId: string;
-    playerId?: string;
-    isEditing?: boolean;
+    playerId: string;
+    isGoalkeeper?: boolean;
   };
+  Notifications: undefined;
 };
 
 export type MainTabParamList = {

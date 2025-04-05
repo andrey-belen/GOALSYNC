@@ -32,6 +32,7 @@ import { startOfDay, endOfDay } from '../utils/dateUtils';
 import { theme } from '../theme';
 import { AnnouncementsCard } from '../components/AnnouncementsCard';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
+import { NotificationsSection } from '../components/NotificationsSection';
 
 type NavigationProp = CompositeNavigationProp<
   BottomTabNavigationProp<MainTabParamList, 'Home'>,
@@ -303,9 +304,9 @@ export const TrainerDashboard = () => {
               <TouchableOpacity 
                 onPress={() => {
                   if (pendingMatchStats.length > 0) {
-                    navigation.navigate('UploadMatchStats', { 
+                    navigation.navigate('UploadMatchStats' as never, { 
                       matchId: pendingMatchStats[0].id,
-                    });
+                    } as never);
                   }
                 }}
               >
@@ -319,10 +320,10 @@ export const TrainerDashboard = () => {
               <TouchableOpacity 
                 onPress={() => {
                   if (pendingPlayerStats.length > 0) {
-                    navigation.navigate('MatchStats', { 
+                    navigation.navigate('MatchStats' as never, { 
                       matchId: pendingPlayerStats[0].matchId,
                       isHomeGame: true,
-                    });
+                    } as never);
                   }
                 }}
               >
@@ -356,56 +357,56 @@ export const TrainerDashboard = () => {
 
           {renderInjuredPlayersWarning()}
           
-          {renderMatchStatsNotifications()}
-
+          {/* Quick Actions */}
           <View style={styles.quickActions}>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('Announcement')}
+              onPress={() => navigation.navigate('Announcement' as never)}
             >
               <Ionicons name="add-circle" size={24} color="#fff" />
               <Text style={styles.actionText}>New Announcement</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('Schedule')}
+              onPress={() => navigation.navigate('Schedule' as never)}
             >
               <Ionicons name="calendar" size={24} color="#fff" />
               <Text style={styles.actionText}>Schedule Event</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.actionButton}
-              onPress={() => navigation.navigate('FormationSetup', {
+              onPress={() => navigation.navigate('FormationSetup' as never, {
                 formation: '4-4-2',
                 players: [],
                 onComplete: () => {}
-              })}
+              } as never)}
             >
               <Ionicons name="football" size={24} color="#fff" />
               <Text style={styles.actionText}>Set Formation</Text>
             </TouchableOpacity>
           </View>
 
+          {/* Team Stats Display */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Team Stats</Text>
             <View style={styles.statsGrid}>
               <TouchableOpacity 
                 style={styles.statCard}
-                onPress={() => navigation.navigate('Team', {})}
+                onPress={() => navigation.navigate('Team' as never, {} as never)}
               >
                 <Text style={styles.statNumber}>{playerCount}</Text>
                 <Text style={styles.statLabel}>Players</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.statCard}
-                onPress={() => navigation.navigate('AttendanceDetails')}
+                onPress={() => navigation.navigate('AttendanceDetails' as never)}
               >
                 <Text style={styles.statNumber}>{attendanceStats?.teamAverage || 0}%</Text>
                 <Text style={styles.statLabel}>Attendance</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.statCard}
-                onPress={() => navigation.navigate('MainTabs', { screen: 'Calendar' })}
+                onPress={() => navigation.navigate('MainTabs' as never, { screen: 'Calendar' } as never)}
               >
                 <Text style={styles.statNumber}>{eventCount}</Text>
                 <Text style={styles.statLabel}>Events</Text>
@@ -413,67 +414,137 @@ export const TrainerDashboard = () => {
             </View>
           </View>
 
-          {(pendingMatchStats.length > 0 || pendingPlayerStats.length > 0) && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>
-                Pending Match Stats
-                {loadingStats && <ActivityIndicator size="small" color={theme.colors.primary} style={{marginLeft: 10}} />}
-              </Text>
-              
-              {pendingMatchStats.length > 0 && (
-                <TouchableOpacity 
-                  style={styles.pendingStatsItem}
-                  onPress={() => {
-                    navigation.navigate('UploadMatchStats', { 
-                      matchId: pendingMatchStats[0].id,
-                    });
-                  }}
-                >
-                  <View style={styles.pendingStatsIconContainer}>
-                    <Ionicons name="trophy-outline" size={20} color={theme.colors.primary} />
-                  </View>
-                  <View style={styles.pendingStatsContent}>
-                    <Text style={styles.pendingStatsTitle}>Score submission needed</Text>
-                    <Text style={styles.pendingStatsSubtitle}>
-                      {pendingMatchStats[0].title || 'Match'} - {pendingMatchStats.length} total
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-                </TouchableOpacity>
-              )}
-              
-              {pendingPlayerStats.length > 0 && (
-                <TouchableOpacity 
-                  style={[styles.pendingStatsItem, pendingMatchStats.length > 0 && styles.pendingStatsItemMargin]}
-                  onPress={() => {
-                    navigation.navigate('MatchStats', { 
-                      matchId: pendingPlayerStats[0].matchId,
-                      isHomeGame: true,
-                    });
-                  }}
-                >
-                  <View style={styles.pendingStatsIconContainer}>
-                    <Ionicons name="clipboard-outline" size={20} color={theme.colors.primary} />
-                  </View>
-                  <View style={styles.pendingStatsContent}>
-                    <Text style={styles.pendingStatsTitle}>Player stats approval needed</Text>
-                    <Text style={styles.pendingStatsSubtitle}>
-                      {pendingPlayerStats[0].playerName || 'Player'} - {pendingPlayerStats.length} total
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-                </TouchableOpacity>
-              )}
+          {/* Unified Updates Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Updates</Text>
+              <TouchableOpacity 
+                style={styles.viewAllButton}
+                onPress={() => navigation.navigate('Notifications' as never)}
+              >
+                <Text style={styles.viewAllText}>View All</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              </TouchableOpacity>
             </View>
-          )}
+            
+            {/* Action Items (High Priority) */}
+            {pendingMatchStats.length > 0 && (
+              <TouchableOpacity 
+                style={styles.updateItem}
+                onPress={() => {
+                  navigation.navigate('UploadMatchStats' as never, { 
+                    matchId: pendingMatchStats[0].id,
+                  } as never);
+                }}
+              >
+                <View style={[styles.updateIconContainer, styles.priorityHighIcon]}>
+                  <Ionicons name="trophy-outline" size={20} color="#ff4444" />
+                </View>
+                <View style={styles.updateContent}>
+                  <View style={styles.updateHeader}>
+                    <Text style={styles.updateTitle}>Score Submission Required</Text>
+                    <View style={styles.priorityBadge}>
+                      <Text style={styles.priorityText}>Urgent</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.updateMessage}>
+                    {pendingMatchStats[0].title || 'Match'} - {pendingMatchStats.length} total
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+              </TouchableOpacity>
+            )}
+            
+            {pendingPlayerStats.length > 0 && (
+              <TouchableOpacity 
+                style={styles.updateItem}
+                onPress={() => {
+                  navigation.navigate('MatchStats' as never, { 
+                    matchId: pendingPlayerStats[0].matchId,
+                    isHomeGame: true,
+                  } as never);
+                }}
+              >
+                <View style={[styles.updateIconContainer, styles.priorityHighIcon]}>
+                  <Ionicons name="clipboard-outline" size={20} color="#ff4444" />
+                </View>
+                <View style={styles.updateContent}>
+                  <View style={styles.updateHeader}>
+                    <Text style={styles.updateTitle}>Player Stats Approval</Text>
+                    <View style={styles.priorityBadge}>
+                      <Text style={styles.priorityText}>Urgent</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.updateMessage}>
+                    {pendingPlayerStats[0].playerName || 'Player'} - {pendingPlayerStats.length} total
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+              </TouchableOpacity>
+            )}
+            
+            {/* Latest Announcement */}
+            <TouchableOpacity 
+              style={styles.updateItem}
+              onPress={() => navigation.navigate('Announcements' as never)}
+            >
+              <View style={[styles.updateIconContainer, styles.standardIcon]}>
+                <Ionicons name="megaphone" size={20} color={theme.colors.primary} />
+              </View>
+              <View style={styles.updateContent}>
+                <View style={styles.updateHeader}>
+                  <Text style={styles.updateTitle}>Latest Announcement</Text>
+                  <Text style={styles.updateTime}>2h ago</Text>
+                </View>
+                <Text style={styles.updateMessage}>
+                  Next week's practice schedule has been updated...
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+            </TouchableOpacity>
+            
+            {/* Recent Notifications */}
+            {user?.id && (
+              <NotificationsSection 
+                userId={user.id}
+                title=""
+                limit={2}
+                showViewAll={false}
+                showEmptyState={false}
+              />
+            )}
+            
+            {/* Stats Summary (if no urgent items) */}
+            {pendingMatchStats.length === 0 && pendingPlayerStats.length === 0 && (
+              <TouchableOpacity 
+                style={styles.updateItem}
+                onPress={() => navigation.navigate('AttendanceDetails' as never)}
+              >
+                <View style={[styles.updateIconContainer, styles.infoIcon]}>
+                  <Ionicons name="analytics" size={20} color="#4CAF50" />
+                </View>
+                <View style={styles.updateContent}>
+                  <View style={styles.updateHeader}>
+                    <Text style={styles.updateTitle}>Team Summary</Text>
+                    <Text style={styles.updateTime}>Today</Text>
+                  </View>
+                  <Text style={styles.updateMessage}>
+                    Team attendance at {attendanceStats?.teamAverage || 0}% this season
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+              </TouchableOpacity>
+            )}
+          </View>
 
+          {/* Today's Schedule */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Today's Schedule</Text>
               {todayEvents.length > 3 && (
                 <TouchableOpacity 
                   style={styles.viewAllButton}
-                  onPress={() => navigation.navigate('MainTabs', { screen: 'Calendar' })}
+                  onPress={() => navigation.navigate('MainTabs' as never, { screen: 'Calendar' } as never)}
                 >
                   <Text style={styles.viewAllText}>View All</Text>
                   <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
@@ -550,7 +621,7 @@ export const TrainerDashboard = () => {
                 {todayEvents.length > 3 && (
                   <TouchableOpacity 
                     style={styles.viewMoreButton}
-                    onPress={() => navigation.navigate('MainTabs', { screen: 'Calendar' })}
+                    onPress={() => navigation.navigate('MainTabs' as never, { screen: 'Calendar' } as never)}
                   >
                     <Text style={styles.viewMoreText}>
                       +{todayEvents.length - 3} more events today
@@ -561,28 +632,6 @@ export const TrainerDashboard = () => {
             ) : (
               <Text style={styles.noEventsText}>No events scheduled for today</Text>
             )}
-          </View>
-
-          <View style={styles.announcementsContainer}>
-            <AnnouncementsCard />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Activity</Text>
-            <TouchableOpacity 
-              style={styles.activityItem}
-              onPress={() => navigation.navigate('Team', {})}
-            >
-              <Text style={styles.activityText}>John D. confirmed attendance</Text>
-              <Text style={styles.activityTime}>5m ago</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.activityItem}
-              onPress={() => navigation.navigate('Chat', { teamId: user?.teamId || 'default' })}
-            >
-              <Text style={styles.activityText}>New message from Mike S.</Text>
-              <Text style={styles.activityTime}>15m ago</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </ScrollView>
@@ -636,6 +685,39 @@ const styles = StyleSheet.create({
   nextMatch: {
     color: '#e17777',
     fontSize: 16,
+  },
+  warningSection: {
+    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ff4444',
+  },
+  warningContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  warningTextContainer: {
+    flex: 1,
+  },
+  warningTitle: {
+    color: '#ff4444',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  warningText: {
+    color: '#ff4444',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  warningMatchText: {
+    color: '#ff4444',
+    fontSize: 12,
+    marginLeft: 8,
+    marginBottom: 2,
   },
   quickActions: {
     flexDirection: 'row',
@@ -750,169 +832,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
-  activityItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  activityText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  activityTime: {
-    color: '#666',
-    fontSize: 14,
-  },
-  warningSection: {
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
-    borderRadius: 15,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#ff4444',
-  },
-  warningContent: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  warningTextContainer: {
-    flex: 1,
-  },
-  warningTitle: {
-    color: '#ff4444',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  warningText: {
-    color: '#ff4444',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  warningMatchText: {
-    color: '#ff4444',
-    fontSize: 12,
-    marginLeft: 8,
-    marginBottom: 2,
-  },
-  noEventsText: {
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    padding: 20,
-  },
   attendanceMarkedButton: {
     backgroundColor: theme.colors.success,
-  },
-  attendanceOverview: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 20,
-    backgroundColor: '#2a305e',
-    borderRadius: 12,
-    marginBottom: 20,
-  },
-  attendanceStatBox: {
-    alignItems: 'center',
-  },
-  attendanceStatNumber: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: theme.colors.primary,
-    marginBottom: 4,
-  },
-  attendanceStatLabel: {
-    fontSize: 14,
-    color: theme.colors.text.secondary,
-  },
-  playerStatsContainer: {
-    backgroundColor: '#2a305e',
-    borderRadius: 12,
-    padding: 16,
-  },
-  playerStatRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  playerStatInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  playerNumberBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(225, 119, 119, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  playerNumberText: {
-    color: theme.colors.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  playerStatName: {
-    color: theme.colors.text.primary,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  playerStatPosition: {
-    color: theme.colors.text.secondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  playerStatNumbers: {
-    alignItems: 'flex-end',
-  },
-  playerStatPercentage: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 2,
-  },
-  playerStatAttendance: {
-    color: theme.colors.text.secondary,
-    fontSize: 12,
-  },
-  card: {
-    backgroundColor: theme.colors.card,
-    borderRadius: 12,
-    marginTop: 10,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  cardContent: {
-    padding: 15,
-  },
-  cardTitle: {
-    fontSize: 16,
-    color: theme.colors.text.secondary,
-    marginBottom: 5,
-  },
-  cardValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
-  },
-  cardSubtext: {
-    color: theme.colors.primary,
-    fontSize: 14,
-    marginTop: 8,
-  },
-  announcementsContainer: {
-    marginBottom: 20,
   },
   viewAllButton: {
     flexDirection: 'row',
@@ -936,41 +857,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  matchStatsSection: {
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
-    borderRadius: 15,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#ff4444',
-  },
-  matchStatsContent: {
+  announcementCardCompact: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    padding: 10,
+    backgroundColor: 'rgba(42, 48, 94, 0.5)',
+    borderRadius: 8,
+    marginBottom: 8,
   },
-  matchStatsTextContainer: {
+  announcementContent: {
     flex: 1,
   },
-  matchStatsTitle: {
-    color: '#ff4444',
-    fontSize: 18,
+  announcementTitle: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 4,
   },
-  matchStatsNotification: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#ff4444',
-    borderRadius: 8,
-  },
-  matchStatsText: {
-    color: '#ff4444',
+  announcementPreview: {
+    color: theme.colors.text.secondary,
     fontSize: 14,
-    fontWeight: '500',
+  },
+  noEventsText: {
+    color: theme.colors.text.secondary,
+    textAlign: 'center',
+    padding: 20,
   },
   pendingStatsItem: {
     flexDirection: 'row',
@@ -1005,5 +915,63 @@ const styles = StyleSheet.create({
   },
   pendingStatsItemMargin: {
     marginTop: 12,
+  },
+  updateItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: 'rgba(42, 48, 94, 0.5)',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  updateIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  priorityHighIcon: {
+    backgroundColor: 'rgba(255, 68, 68, 0.2)',
+  },
+  standardIcon: {
+    backgroundColor: 'rgba(225, 119, 119, 0.2)',
+  },
+  infoIcon: {
+    backgroundColor: 'rgba(76, 175, 80, 0.2)',
+  },
+  updateContent: {
+    flex: 1,
+  },
+  updateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  updateTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  updateTime: {
+    color: theme.colors.text.secondary,
+    fontSize: 12,
+  },
+  updateMessage: {
+    color: theme.colors.text.secondary,
+    fontSize: 14,
+  },
+  priorityBadge: {
+    backgroundColor: '#ff4444',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  priorityText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
 });

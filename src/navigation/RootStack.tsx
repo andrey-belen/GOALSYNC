@@ -13,6 +13,8 @@ import { AttendanceDetails } from '../screens/AttendanceDetails';
 import { MatchStatsScreen } from '../screens/MatchStatsScreen';
 import { MatchDetails } from '../screens/MatchDetails';
 import { UploadMatchStatsScreen } from '../screens/UploadMatchStatsScreen';
+import { SubmitPlayerStatsScreen } from '../screens/SubmitPlayerStatsScreen';
+import { Notifications } from '../screens/Notifications';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -85,6 +87,19 @@ export const RootStack = () => {
         name="UploadMatchStats" 
         component={UploadMatchStatsScreen}
         options={{ title: 'Upload Statistics' }}
+      />
+      <Stack.Screen 
+        name="SubmitPlayerStats" 
+        component={SubmitPlayerStatsScreen}
+        options={{ title: 'Submit Player Statistics' }}
+      />
+      <Stack.Screen 
+        name="Notifications" 
+        component={Notifications}
+        options={{ 
+          title: 'Notifications',
+          headerShown: false 
+        }}
       />
     </Stack.Navigator>
   );

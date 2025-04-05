@@ -99,7 +99,6 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
     value, 
     onIncrement, 
     onDecrement,
-    helpText,
     maxValue = 10,
     minValue = 0
   }: {
@@ -107,118 +106,132 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
     value: number;
     onIncrement: () => void;
     onDecrement: () => void;
-    helpText?: string;
     maxValue?: number;
     minValue?: number;
   }) => (
     <View style={styles.statItem}>
-      <View style={styles.statHeader}>
-        <Text style={styles.statLabel}>{label}</Text>
-        {helpText && (
-          <Text style={styles.helpText}>{helpText}</Text>
-        )}
-      </View>
+      <Text style={styles.statLabel}>{label}</Text>
       <View style={styles.statInputContainer}>
-        <TouchableOpacity 
-          style={[styles.statButton, value <= minValue && styles.disabledButton]}
-          onPress={onDecrement}
-          disabled={value <= minValue}
-        >
-          <Text style={[styles.statButtonText, value <= minValue && styles.disabledButtonText]}>-</Text>
-        </TouchableOpacity>
+        <View style={styles.statButtonColumn}>
+          <TouchableOpacity 
+            style={[styles.smallStatButton, value >= maxValue && styles.disabledButton]}
+            onPress={onIncrement}
+            disabled={value >= maxValue}
+          >
+            <Text style={[styles.smallStatButtonText, value >= maxValue && styles.disabledButtonText]}>+</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.smallStatButton, value <= minValue && styles.disabledButton]}
+            onPress={onDecrement}
+            disabled={value <= minValue}
+          >
+            <Text style={[styles.smallStatButtonText, value <= minValue && styles.disabledButtonText]}>-</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={styles.statValue}>{value}</Text>
-        <TouchableOpacity 
-          style={[styles.statButton, value >= maxValue && styles.disabledButton]}
-          onPress={onIncrement}
-          disabled={value >= maxValue}
-        >
-          <Text style={[styles.statButtonText, value >= maxValue && styles.disabledButtonText]}>+</Text>
-        </TouchableOpacity>
       </View>
+    </View>
+  );
+
+  // Custom component for Minutes Played with direct input
+  const MinutesPlayedInput = () => (
+    <View style={styles.minutesContainer}>
+      <Text style={styles.statLabel}>Minutes Played</Text>
+      <TextInput
+        style={styles.minutesInput}
+        value={stats.minutesPlayed.toString()}
+        onChangeText={(value) => {
+          const minutes = parseInt(value) || 0;
+          if (minutes >= 0 && minutes <= 120) {
+            setStats(prev => ({ ...prev, minutesPlayed: minutes }));
+          }
+        }}
+        keyboardType="number-pad"
+        maxLength={3}
+        placeholder="0-120"
+      />
     </View>
   );
 
   return (
     <View style={styles.container}>
-      <View style={styles.statsGrid}>
-        <StatInput
-          label="Goals"
-          value={stats.goals}
-          onIncrement={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
-          onDecrement={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
-          helpText="Number of goals scored"
-          maxValue={10}
-        />
-
-        <StatInput
-          label="Assists"
-          value={stats.assists}
-          onIncrement={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
-          onDecrement={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
-          helpText="Number of assists made"
-          maxValue={10}
-        />
-
-        <StatInput
-          label="Shots on Target"
-          value={stats.shotsOnTarget}
-          onIncrement={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
-          onDecrement={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
-          helpText="Number of shots that were on target"
-          maxValue={20}
-        />
-
-        <StatInput
-          label="Yellow Cards"
-          value={stats.yellowCards}
-          onIncrement={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
-          onDecrement={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
-          helpText="Number of yellow cards received"
-          maxValue={2}
-        />
-
-        <StatInput
-          label="Red Cards"
-          value={stats.redCards}
-          onIncrement={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
-          onDecrement={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
-          helpText="Number of red cards received"
-          maxValue={1}
-        />
-
-        {initialIsGoalkeeper && (
-          <>
-            <StatInput
-              label="Saves"
-              value={stats.saves}
-              onIncrement={() => setStats(prev => ({ ...prev, saves: prev.saves + 1 }))}
-              onDecrement={() => setStats(prev => ({ ...prev, saves: Math.max(0, prev.saves - 1) }))}
-              helpText="Number of saves made"
-              maxValue={20}
-            />
-
+      {/* Minutes played at the top with direct input */}
+      <MinutesPlayedInput />
+      
+      {/* Make the rest of the stats more compact with multi-column layout */}
+      <View style={styles.compactStatsGrid}>
+        <View style={styles.statsColumn}>
+          <StatInput
+            label="Goals"
+            value={stats.goals}
+            onIncrement={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
+            onDecrement={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
+            maxValue={10}
+          />
+          <StatInput
+            label="Assists"
+            value={stats.assists}
+            onIncrement={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
+            onDecrement={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
+            maxValue={10}
+          />
+          <StatInput
+            label="Yellow Cards"
+            value={stats.yellowCards}
+            onIncrement={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
+            onDecrement={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
+            maxValue={2}
+          />
+        </View>
+        
+        <View style={styles.statsColumn}>
+          <StatInput
+            label="Shots on Target"
+            value={stats.shotsOnTarget}
+            onIncrement={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
+            onDecrement={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
+            maxValue={20}
+          />
+          <StatInput
+            label="Red Cards"
+            value={stats.redCards}
+            onIncrement={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
+            onDecrement={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
+            maxValue={1}
+          />
+          
+          {/* Show goalkeeper-specific stats in the second column */}
+          {initialIsGoalkeeper && (
             <StatInput
               label="Goals Conceded"
               value={stats.goalsConceded}
               onIncrement={() => setStats(prev => ({ ...prev, goalsConceded: prev.goalsConceded + 1 }))}
               onDecrement={() => setStats(prev => ({ ...prev, goalsConceded: Math.max(0, prev.goalsConceded - 1) }))}
-              helpText="Number of goals conceded"
               maxValue={10}
             />
-
-            <View style={styles.statItem}>
-              <View style={styles.statHeader}>
-                <Text style={styles.statLabel}>Clean Sheet</Text>
-                <Text style={styles.helpText}>Did not concede any goals</Text>
-              </View>
-              <Switch
-                value={stats.cleanSheet}
-                onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
-              />
-            </View>
-          </>
-        )}
+          )}
+        </View>
       </View>
+      
+      {/* Goalkeeper-specific stats */}
+      {initialIsGoalkeeper && (
+        <View style={styles.goalieStats}>
+          <StatInput
+            label="Saves"
+            value={stats.saves}
+            onIncrement={() => setStats(prev => ({ ...prev, saves: prev.saves + 1 }))}
+            onDecrement={() => setStats(prev => ({ ...prev, saves: Math.max(0, prev.saves - 1) }))}
+            maxValue={20}
+          />
+          <View style={styles.cleanSheetContainer}>
+            <Text style={styles.statLabel}>Clean Sheet</Text>
+            <Switch
+              value={stats.cleanSheet}
+              onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
+            />
+          </View>
+        </View>
+      )}
 
       {!hideSubmitButton && (
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
@@ -231,65 +244,75 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    padding: 8,
+    padding: 10,
   },
-  statsGrid: {
-    gap: 12,
+  compactStatsGrid: {
+    flexDirection: 'row',
+    marginTop: 10,
+    gap: 8,
+  },
+  statsColumn: {
+    flex: 1,
+    gap: 8,
+  },
+  goalieStats: {
+    marginTop: 10,
+    gap: 8,
   },
   statItem: {
     backgroundColor: theme.colors.card,
-    padding: 12,
-    borderRadius: 6,
-  },
-  statHeader: {
-    marginBottom: 8,
+    padding: 10,
+    borderRadius: 8,
   },
   statLabel: {
     fontSize: 14,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
-  },
-  helpText: {
-    fontSize: 12,
-    color: theme.colors.text.secondary,
-    marginTop: 2,
+    marginBottom: 4,
   },
   statInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
-  statButton: {
+  statButtonColumn: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 5,
+  },
+  smallStatButton: {
     backgroundColor: theme.colors.primary,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
   disabledButton: {
     backgroundColor: theme.colors.disabled,
+    opacity: 0.5,
   },
-  statButtonText: {
+  smallStatButtonText: {
     color: theme.colors.text.inverse,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
+    lineHeight: 18,
   },
   disabledButtonText: {
     color: theme.colors.text.secondary,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: theme.colors.text.primary,
-    marginHorizontal: 16,
-    minWidth: 40,
+    width: '50%',
     textAlign: 'center',
   },
   submitButton: {
     backgroundColor: theme.colors.primary,
-    padding: 14,
-    borderRadius: 6,
+    padding: 12,
+    borderRadius: 8,
     alignItems: 'center',
     marginTop: 16,
   },
@@ -297,5 +320,33 @@ const styles = StyleSheet.create({
     color: theme.colors.text.inverse,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  minutesContainer: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.card,
+    padding: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  minutesInput: {
+    backgroundColor: theme.colors.background,
+    color: theme.colors.text.primary,
+    fontSize: 18,
+    fontWeight: 'bold',
+    padding: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    textAlign: 'center',
+    width: '45%',
+  },
+  cleanSheetContainer: {
+    backgroundColor: theme.colors.card,
+    padding: 10,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
 }); 

@@ -25,6 +25,7 @@ import { AllAnnouncementsScreen } from '../screens/AllAnnouncementsScreen';
 import { AnnouncementDetailsScreen } from '../screens/AnnouncementDetailsScreen';
 import { MatchStatsScreen } from '../screens/MatchStatsScreen';
 import { UploadMatchStatsScreen } from '../screens/UploadMatchStatsScreen';
+import { SubmitPlayerStatsScreen } from '../screens/SubmitPlayerStatsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -115,6 +116,18 @@ export const MainNavigator = () => {
         options={{
           headerShown: true,
           title: 'Match Statistics',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
+      <Stack.Screen 
+        name="SubmitPlayerStats" 
+        component={SubmitPlayerStatsScreen}
+        options={{
+          headerShown: true,
+          title: 'Submit Player Statistics',
           headerStyle: {
             backgroundColor: '#1a1f3d',
           },

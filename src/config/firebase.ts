@@ -1460,4 +1460,180 @@ export const getPendingPlayerStats = async (teamId: string) => {
     console.error('Error getting pending player stats:', error);
     throw error;
   }
+};
+
+// Get player stats statuses for a specific player
+export const getPlayerStatsNotifications = async (playerId: string) => {
+  try {
+    console.log('Searching for player stats notifications for player:', playerId);
+    
+    // Define proper types for PlayerMatchStats and Event
+    interface PlayerMatchStat {
+      id: string;
+      playerId: string;
+      matchId: string;
+      status: 'pending' | 'approved' | 'rejected';
+      submittedAt: any;
+      stats: any;
+      comment?: string;
+      [key: string]: any;
+    }
+    
+    interface Event {
+      id: string;
+      title?: string;
+      startTime?: any;
+      opponent?: string;
+      roster?: Array<{id: string; name: string}>;
+      status?: string;
+      type?: string;
+      [key: string]: any;
+    }
+    
+    // Get all player match stats for this player
+    const playerStatsRef = collection(db, 'playerMatchStats');
+    const q = query(
+      playerStatsRef,
+      where('playerId', '==', playerId),
+      orderBy('submittedAt', 'desc')
+    );
+    
+    const statsSnapshot = await getDocs(q);
+    const allStats = statsSnapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    })) as PlayerMatchStat[];
+    
+    // Extract different stat types
+    const pendingStats = allStats.filter(stat => stat.status === 'pending');
+    const approvedStats = allStats.filter(stat => stat.status === 'approved');
+    const rejectedStats = allStats.filter(stat => stat.status === 'rejected');
+    
+    // Get match details for each stat
+    const enhancedStats = await Promise.all(allStats.map(async (stat) => {
+      const matchRef = doc(db, 'events', stat.matchId);
+      const matchSnap = await getDoc(matchRef);
+      const match = matchSnap.exists() ? matchSnap.data() : null;
+      
+      return {
+        ...stat,
+        matchTitle: match?.title || 'Unknown Match',
+        matchDate: match?.startTime || null,
+        opponent: match?.opponent || 'Unknown Team',
+      };
+    }));
+    
+    // Also find matches that need stats submission
+    const eventsRef = collection(db, 'events');
+    const matchesQuery = query(
+      eventsRef,
+      where('type', '==', 'match'),
+      where('status', '==', 'completed')
+    );
+    
+    const matchesSnapshot = await getDocs(matchesQuery);
+    const completedMatches = matchesSnapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    })) as Event[];
+    
+    // Filter for matches that include this player in the roster
+    const playerMatches = completedMatches.filter(match => 
+      match.roster?.some(player => player.id === playerId)
+    );
+    
+    // Find matches that the player hasn't submitted stats for yet
+    const matchesWithNoStats = playerMatches.filter(match => 
+      !allStats.some(stat => stat.matchId === match.id)
+    );
+    
+    const needsSubmission = matchesWithNoStats.map(match => ({
+      id: match.id,
+      matchTitle: match.title || 'Unknown Match',
+      matchDate: match.startTime || null,
+      opponent: match.opponent || 'Unknown Team'
+    }));
+    
+    return {
+      pendingApproval: enhancedStats.filter(stat => stat.status === 'pending'),
+      approved: enhancedStats.filter(stat => stat.status === 'approved'),
+      rejected: enhancedStats.filter(stat => stat.status === 'rejected'),
+      needsSubmission
+    };
+  } catch (error) {
+    console.error('Error getting player stats notifications:', error);
+    throw error;
+  }
+};
+
+// Create a notification
+export const createNotification = async (data: {
+  userId: string;
+  type: 'stats_approved' | 'stats_rejected' | 'stats_released' | 'stats_needed' | 'approval_needed';
+  title: string;
+  message: string;
+  relatedId?: string; // matchId or statId
+  teamId: string;
+}) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to create notifications');
+    }
+    
+    const notificationRef = doc(collection(db, 'notifications'));
+    await setDoc(notificationRef, {
+      id: notificationRef.id,
+      ...data,
+      createdAt: serverTimestamp(),
+      read: false
+    });
+    
+    return notificationRef.id;
+  } catch (error: any) {
+    console.error('Error creating notification:', error);
+    throw new Error(error.message || 'Failed to create notification');
+  }
+};
+
+// Get notifications for a user
+export const getUserNotifications = async (userId: string) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to get notifications');
+    }
+    
+    const notificationsRef = collection(db, 'notifications');
+    const q = query(
+      notificationsRef,
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(20) // Limit to most recent 20 notifications
+    );
+    
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error: any) {
+    console.error('Error getting user notifications:', error);
+    throw new Error(error.message || 'Failed to get notifications');
+  }
+};
+
+// Mark a notification as read
+export const markNotificationAsRead = async (notificationId: string) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to update notifications');
+    }
+    
+    const notificationRef = doc(db, 'notifications', notificationId);
+    await updateDoc(notificationRef, {
+      read: true
+    });
+  } catch (error: any) {
+    console.error('Error marking notification as read:', error);
+    throw new Error(error.message || 'Failed to update notification');
+  }
 }; 

@@ -14,7 +14,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../contexts/AuthContext';
 import { SelectedPlayer } from '../types/formation';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
 
@@ -95,28 +95,10 @@ export const MatchDetails = ({ route, navigation }: Props) => {
   const injuredPlayers = matchDetails.players.filter((p: SelectedPlayer) => p.status === 'injured');
   const hasInjuredPlayers = injuredPlayers.length > 0;
 
-  const handleScheduleMatch = () => {
-    // TODO: Implement match scheduling logic
-    Alert.alert(
-      'Success',
-      'Match scheduled successfully',
-      [{ 
-        text: 'OK', 
-        onPress: () => {
-          // Reset navigation stack and go to MainTabs
-          navigation.reset({
-            index: 0,
-            routes: [
-              {
-                name: 'MainTabs',
-                params: { screen: 'Calendar' }
-              },
-            ],
-          });
-        }
-      }]
-    );
-  };
+  const [hasSubmittedStats, setHasSubmittedStats] = useState<boolean | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [statsReleased, setStatsReleased] = useState<boolean | null>(null);
+  const [isCheckingStatsRelease, setIsCheckingStatsRelease] = useState(false);
 
   const handleEditFormation = () => {
     navigation.navigate('FormationSetup', {
@@ -228,6 +210,122 @@ export const MatchDetails = ({ route, navigation }: Props) => {
     } catch (error) {
       console.error('Error saving changes:', error);
       Alert.alert('Error', 'Failed to save changes. Please try again.');
+    }
+  };
+
+  // Check if player has already submitted stats
+  const checkPlayerStats = async () => {
+    if (!user?.id || isCoach) return;
+
+    setIsLoadingStats(true);
+    try {
+      // Check if player already has stats for this match
+      const statsQuery = query(
+        collection(db, 'playerMatchStats'),
+        where('matchId', '==', matchDetails.id),
+        where('playerId', '==', user.id)
+      );
+      const statsSnapshot = await getDocs(statsQuery);
+      setHasSubmittedStats(!statsSnapshot.empty);
+    } catch (error) {
+      console.error('Error checking player stats:', error);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
+  // Check if match stats are released
+  const checkMatchStatsReleased = async () => {
+    if (!matchDetails?.id) return;
+
+    setIsCheckingStatsRelease(true);
+    try {
+      // Query for match stats document
+      const matchStatsRef = doc(db, 'matchStats', matchDetails.id);
+      const matchStatsDoc = await getDoc(matchStatsRef);
+      
+      if (matchStatsDoc.exists()) {
+        const matchStatsData = matchStatsDoc.data();
+        setStatsReleased(matchStatsData.visibility === 'public');
+      } else {
+        setStatsReleased(false);
+      }
+    } catch (error) {
+      console.error('Error checking match stats release status:', error);
+      setStatsReleased(false);
+    } finally {
+      setIsCheckingStatsRelease(false);
+    }
+  };
+
+  // Check if attendance has been marked for this match
+  const checkAttendanceMarked = async () => {
+    if (!matchDetails?.id) return false;
+    
+    try {
+      const eventDoc = await getDoc(doc(db, 'events', matchDetails.id));
+      if (eventDoc.exists()) {
+        const eventData = eventDoc.data();
+        // Consider attendance marked if there are any attendees or absentees
+        return (eventData.attendees?.length > 0 || eventData.absentees?.length > 0);
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking attendance status:', error);
+      return false;
+    }
+  };
+
+  // Call the release check when the component mounts
+  useEffect(() => {
+    if (matchDetails?.id) {
+      checkMatchStatsReleased();
+      checkPlayerStats();
+    }
+  }, [matchDetails?.id, user?.id]);
+
+  const handleStatsAction = async () => {
+    if (isCoach) {
+      // Trainers need attendance to be marked first
+      const attendanceMarked = await checkAttendanceMarked();
+      if (!attendanceMarked) {
+        Alert.alert(
+          'Attendance Required', 
+          'You must mark attendance for this match before accessing statistics.',
+          [
+            { 
+              text: 'Go to Attendance', 
+              onPress: () => navigation.navigate('Attendance', { 
+                eventId: matchDetails.id,
+                eventType: 'match',
+                title: matchDetails.title,
+                date: matchDetails.date,
+                time: matchDetails.time,
+                location: matchDetails.location,
+                notes: matchDetails.notes
+              }) 
+            },
+            { text: 'Cancel', style: 'cancel' }
+          ]
+        );
+        return;
+      }
+      
+      // If attendance is marked, proceed to stats screen
+      handleViewStats();
+    } else if (hasSubmittedStats) {
+      // Players with submitted stats navigate to view stats if stats are released
+      if (statsReleased) {
+        handleViewStats();
+      } else {
+        Alert.alert(
+          'Statistics Not Released', 
+          'Match statistics have not been released by the trainer yet. Please check back later.'
+        );
+      }
+    } else {
+      // Players without stats navigate to upload stats
+      handleUploadStats();
     }
   };
 
@@ -407,7 +505,7 @@ export const MatchDetails = ({ route, navigation }: Props) => {
           <View style={styles.actionButtons}>
             {isCoach && (
               <TouchableOpacity 
-                style={[styles.button, styles.editButton]} 
+                style={[styles.button, styles.buttonBackground]} 
                 onPress={handleEditFormation}
               >
                 <Ionicons name="create-outline" size={20} color={theme.colors.text.primary} />
@@ -416,22 +514,38 @@ export const MatchDetails = ({ route, navigation }: Props) => {
             )}
             
             <TouchableOpacity 
-              style={[styles.button, styles.statsButton]} 
-              onPress={handleViewStats}
+              style={[styles.button, styles.statsButton, isLoadingStats && styles.disabledButton]} 
+              onPress={handleStatsAction}
+              disabled={isLoadingStats || isCheckingStatsRelease}
             >
-              <Ionicons name="stats-chart" size={20} color={theme.colors.text.primary} />
-              <Text style={styles.buttonText}>Match Stats</Text>
+              <Ionicons
+                name={
+                  isCheckingStatsRelease || isLoadingStats 
+                    ? "hourglass-outline"
+                    : isCoach 
+                      ? "stats-chart" 
+                      : hasSubmittedStats 
+                        ? statsReleased 
+                          ? "stats-chart" 
+                          : "lock-closed"
+                        : "cloud-upload-outline"
+                }
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.statsButtonText}>
+                {isCheckingStatsRelease || isLoadingStats 
+                  ? "Loading..." 
+                  : isCoach
+                    ? "Match Stats"
+                    : hasSubmittedStats
+                      ? statsReleased
+                        ? "View Stats"
+                        : "Stats Not Released"
+                      : "Upload Stats"
+                }
+              </Text>
             </TouchableOpacity>
-
-            {!isCoach && (
-              <TouchableOpacity 
-                style={[styles.button, styles.uploadButton]} 
-                onPress={handleUploadStats}
-              >
-                <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.text.primary} />
-                <Text style={styles.buttonText}>Upload Stats</Text>
-              </TouchableOpacity>
-            )}
           </View>
           </View>
 
@@ -443,7 +557,7 @@ export const MatchDetails = ({ route, navigation }: Props) => {
               <Text style={styles.formationText}>{matchDetails.formation}</Text>
               {isCoach && (
               <TouchableOpacity
-                style={styles.editButton}
+                style={styles.formationEditButton}
                 onPress={handleEditFormation}
               >
                 <Ionicons name="create-outline" size={20} color={theme.colors.primary} />
@@ -540,7 +654,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     fontWeight: '600',
   },
-  editButton: {
+  formationEditButton: {
     backgroundColor: theme.colors.primary,
   },
   editButtonText: {
@@ -804,11 +918,11 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.sm,
     gap: theme.spacing.xs,
   },
-  editButton: {
+  buttonBackground: {
     backgroundColor: theme.colors.background,
   },
   statsButton: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.primary,
   },
   uploadButton: {
     backgroundColor: theme.colors.background,
@@ -817,5 +931,13 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     fontSize: 14,
     fontWeight: '500',
+  },
+  statsButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  disabledButton: {
+    opacity: 0.7,
   },
 }); 

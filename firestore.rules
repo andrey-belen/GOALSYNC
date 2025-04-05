@@ -32,6 +32,14 @@ service cloud.firestore {
              request.resource.data.players.hasOnly(resource.data.players.concat([request.auth.uid]));
     }
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwnStats(playerId) {
+      return isSignedIn() && request.auth.uid == playerId;
+    }
+
     // Announcements rules
     match /announcements/{announcementId} {
       allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
@@ -45,6 +53,23 @@ service cloud.firestore {
          request.resource.data.readBy.hasOnly(resource.data.readBy.concat([request.auth.uid])))
       );
       allow delete: if isAuthenticated() && isTeamTrainer(resource.data.teamId);
+    }
+    
+    // Notifications rules
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated() && (
+        isTrainer() || 
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isAuthenticated() && (
+        // Users can only mark their own notifications as read
+        request.auth.uid == resource.data.userId && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']) &&
+        request.resource.data.read == true
+      );
+      allow delete: if isAuthenticated() && 
+        (isTrainer() || request.auth.uid == resource.data.userId);
     }
 
     // Events rules
@@ -107,29 +132,31 @@ service cloud.firestore {
 
     // Player Match Stats rules
     match /playerMatchStats/{statId} {
-      allow read: if isAuthenticated() && (
-        resource.data.playerId == request.auth.uid ||
-        isTrainer()
+      function getMatchVisibility(matchId) {
+        let matchStats = get(/databases/$(database)/documents/matchStats/$(matchId));
+        return matchStats != null ? matchStats.data.visibility : null;
+      }
+      
+      allow read: if isSignedIn() && (
+        isOwnStats(resource.data.playerId) || 
+        isTrainer() ||
+        (resource.data.matchId != null && getMatchVisibility(resource.data.matchId) == 'public') ||
+        (resource.data.matchId != null && 
+         isTeamMember(get(/databases/$(database)/documents/events/$(resource.data.matchId)).data.teamId))
       );
-      allow create: if isAuthenticated() && (
-        request.resource.data.playerId == request.auth.uid ||
-        isTrainer()
-      );
-      allow update: if isAuthenticated() && (
-        // Allow trainers to update status and add comments
-        (isTrainer() &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'comments'])) ||
-        // Allow players to update their own stats before they're reviewed
-        (resource.data.playerId == request.auth.uid &&
-         resource.data.status == 'pending' &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stats']))
-      );
-      allow delete: if isAuthenticated() && isTrainer();
+      allow create: if isOwnStats(request.resource.data.playerId) || isTrainer();
+      allow update: if (isOwnStats(resource.data.playerId) && resource.data.status == 'pending') || isTrainer();
+      allow delete: if isTrainer();
     }
 
     // Match Stats rules
     match /matchStats/{statId} {
-      allow read: if isAuthenticated() && isTrainer();
+      allow read: if isAuthenticated() && (
+        isTrainer() || 
+        (resource.data.visibility == 'public') ||
+        (resource.data.matchId != null && 
+         isTeamMember(get(/databases/$(database)/documents/events/$(resource.data.matchId)).data.teamId))
+      );
       allow create, update: if isAuthenticated() && isTrainer();
       allow delete: if isAuthenticated() && isTrainer();
     }

@@ -160,6 +160,8 @@ export interface MatchStats {
   };
   possession: number; // percentage for home team
   status: 'draft' | 'final';
+  visibility: 'private' | 'public'; // controls whether players can see stats
+  allStatsComplete: boolean; // indicates if all player stats are complete and approved
   playerStats: string[]; // array of PlayerMatchStats IDs
   submittedBy: string;
   submittedAt: Timestamp;

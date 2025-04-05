@@ -13,7 +13,7 @@ import { theme } from '../theme';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, Timestamp, doc, getDoc, query, getDocs, where } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc, query, getDocs, where, deleteDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
 import { Event } from '../types/database';
@@ -87,13 +87,27 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
         
         if (!statsSnapshot.empty) {
           const existingStats = statsSnapshot.docs[0].data();
+          
+          // If stats are approved, prevent resubmission
           if (existingStats.status === 'approved') {
             Alert.alert('Already Submitted', 'Your statistics for this match have already been approved.');
-          } else {
+            navigation.goBack();
+            return;
+          } 
+          // If stats are pending, prevent resubmission
+          else if (existingStats.status === 'pending') {
             Alert.alert('Already Submitted', 'You have already submitted statistics for this match. Please wait for approval.');
+            navigation.goBack();
+            return;
           }
-          navigation.goBack();
-          return;
+          // If stats were rejected, allow resubmission
+          else if (existingStats.status === 'rejected') {
+            // Allow resubmission by showing an info message but continuing
+            Alert.alert(
+              'Previous Submission Rejected', 
+              'Your previous statistics submission was rejected. You can submit new statistics now.'
+            );
+          }
         }
 
         setCanSubmitStats(true);
@@ -112,6 +126,24 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
+
+      // Check if player has rejected stats and delete them first
+      const statsQuery = query(
+        collection(db, 'playerMatchStats'),
+        where('matchId', '==', matchId),
+        where('playerId', '==', user?.id),
+        where('status', '==', 'rejected')
+      );
+      const statsSnapshot = await getDocs(statsQuery);
+      
+      // If there are rejected stats, delete them
+      if (!statsSnapshot.empty) {
+        const rejectedStatId = statsSnapshot.docs[0].id;
+        await deleteDoc(doc(db, 'playerMatchStats', rejectedStatId));
+        console.log('Deleted rejected stats:', rejectedStatId);
+      }
+
+      // Create new player stats
       const playerStats = {
         matchId,
         playerId: user?.id,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { collection, query, where, getDocs, addDoc, Timestamp, getDoc, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase.config';
+import { collection, query, where, getDocs, addDoc, Timestamp, getDoc, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { theme } from '../theme';
 import { PlayerMatchStats } from '../types/database';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -188,12 +188,43 @@ export const SubmitPlayerStatsScreen: React.FC<Props> = ({ route, navigation }) 
 
     try {
       setIsSubmitting(true);
+
       if (isEditing && existingStatsId) {
-        await updateDoc(doc(db, 'playerMatchStats', existingStatsId), {
+        // If we're editing existing stats, update with the new values and set status to approved if trainer
+        const updateData: any = {
           stats: formStats,
           updatedAt: Timestamp.now(),
-        });
+        };
+        
+        // If user is a trainer, also ensure the status is set to approved
+        if (user?.type === 'trainer') {
+          updateData.status = 'approved';
+          updateData.reviewedAt = Timestamp.now();
+          updateData.reviewedBy = user.id;
+        }
+        
+        await updateDoc(doc(db, 'playerMatchStats', existingStatsId), updateData);
       } else {
+        // Check for and delete any rejected stats for this player and match
+        if (user?.type === 'trainer') {
+          const rejectedStatsQuery = query(
+            collection(db, 'playerMatchStats'),
+            where('matchId', '==', matchId),
+            where('playerId', '==', selectedPlayer.id),
+            where('status', '==', 'rejected')
+          );
+          const rejectedStatsSnapshot = await getDocs(rejectedStatsQuery);
+          
+          if (!rejectedStatsSnapshot.empty) {
+            // Delete all rejected entries for this player
+            for (const doc of rejectedStatsSnapshot.docs) {
+              console.log('Deleting rejected stats:', doc.id);
+              await deleteDoc(doc.ref);
+            }
+          }
+        }
+
+        // Create new player stats
         const playerStats = {
           matchId: selectedMatch.id,
           playerId: selectedPlayer.id,
@@ -202,6 +233,7 @@ export const SubmitPlayerStatsScreen: React.FC<Props> = ({ route, navigation }) 
         console.log('Creating new stats:', playerStats); // Debug log
         await submitPlayerStats(playerStats);
       }
+      
       navigation.goBack();
     } catch (error) {
       console.error('Error submitting player stats:', error);
@@ -538,36 +570,5 @@ const styles = StyleSheet.create({
   absentCard: {
     opacity: 0.6,
     backgroundColor: theme.colors.error + '20', // 20% opacity
-  },
-  approvedPlayerName: {
-    color: theme.colors.success,
-    fontWeight: '600',
-  },
-  approvedPlayerPosition: {
-    color: theme.colors.success + 'CC', // 80% opacity
-  },
-  absentPlayerName: {
-    color: theme.colors.error,
-  },
-  absentPlayerPosition: {
-    color: theme.colors.error + 'CC', // 80% opacity
-  },
-  absentIcon: {
-    backgroundColor: theme.colors.error,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  absentIconText: {
-    color: theme.colors.text.inverse,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  playerNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
 }); 

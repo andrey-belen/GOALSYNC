@@ -7,9 +7,12 @@ export const theme = {
     warning: '#f1c40f',
     white: '#ffffff',
     card: '#2a2f4d',
+    border: '#3a3f5d',
+    disabled: '#4a4f6d',
     text: {
       primary: '#ffffff',
       secondary: '#a0a0a0',
+      inverse: '#ffffff',
     },
   },
   spacing: {
