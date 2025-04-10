@@ -110,7 +110,7 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
     minValue?: number;
   }) => (
     <View style={styles.statItem}>
-      <Text style={styles.statLabel}>{label}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
       <View style={styles.statInputContainer}>
         <View style={styles.statButtonColumn}>
           <TouchableOpacity 
@@ -120,13 +120,13 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
           >
             <Text style={[styles.smallStatButtonText, value >= maxValue && styles.disabledButtonText]}>+</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
+        <TouchableOpacity 
             style={[styles.smallStatButton, value <= minValue && styles.disabledButton]}
-            onPress={onDecrement}
-            disabled={value <= minValue}
-          >
+          onPress={onDecrement}
+          disabled={value <= minValue}
+        >
             <Text style={[styles.smallStatButtonText, value <= minValue && styles.disabledButtonText]}>-</Text>
-          </TouchableOpacity>
+        </TouchableOpacity>
         </View>
         <Text style={styles.statValue}>{value}</Text>
       </View>
@@ -161,20 +161,20 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
       {/* Make the rest of the stats more compact with multi-column layout */}
       <View style={styles.compactStatsGrid}>
         <View style={styles.statsColumn}>
-          <StatInput
-            label="Goals"
-            value={stats.goals}
-            onIncrement={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
-            onDecrement={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
-            maxValue={10}
-          />
-          <StatInput
-            label="Assists"
-            value={stats.assists}
-            onIncrement={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
-            onDecrement={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
-            maxValue={10}
-          />
+        <StatInput
+          label="Goals"
+          value={stats.goals}
+          onIncrement={() => setStats(prev => ({ ...prev, goals: prev.goals + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, goals: Math.max(0, prev.goals - 1) }))}
+          maxValue={10}
+        />
+        <StatInput
+          label="Assists"
+          value={stats.assists}
+          onIncrement={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
+          maxValue={10}
+        />
           <StatInput
             label="Yellow Cards"
             value={stats.yellowCards}
@@ -185,23 +185,23 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
         </View>
         
         <View style={styles.statsColumn}>
-          <StatInput
-            label="Shots on Target"
-            value={stats.shotsOnTarget}
-            onIncrement={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
-            onDecrement={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
-            maxValue={20}
-          />
-          <StatInput
-            label="Red Cards"
-            value={stats.redCards}
-            onIncrement={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
-            onDecrement={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
-            maxValue={1}
-          />
-          
+        <StatInput
+          label="Shots on Target"
+          value={stats.shotsOnTarget}
+          onIncrement={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
+          onDecrement={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
+          maxValue={20}
+        />
+        <StatInput
+          label="Red Cards"
+          value={stats.redCards}
+          onIncrement={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
+          onDecrement={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
+          maxValue={1}
+        />
+
           {/* Show goalkeeper-specific stats in the second column */}
-          {initialIsGoalkeeper && (
+        {initialIsGoalkeeper && (
             <StatInput
               label="Goals Conceded"
               value={stats.goalsConceded}
@@ -224,14 +224,14 @@ export const PlayerMatchStatsForm: React.FC<PlayerMatchStatsFormProps> = ({
             maxValue={20}
           />
           <View style={styles.cleanSheetContainer}>
-            <Text style={styles.statLabel}>Clean Sheet</Text>
-            <Switch
-              value={stats.cleanSheet}
-              onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
-            />
-          </View>
+                <Text style={styles.statLabel}>Clean Sheet</Text>
+              <Switch
+                value={stats.cleanSheet}
+                onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
+              />
+            </View>
         </View>
-      )}
+        )}
 
       {!hideSubmitButton && (
         <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>

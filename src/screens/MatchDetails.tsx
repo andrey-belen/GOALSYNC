@@ -503,16 +503,6 @@ export const MatchDetails = ({ route, navigation }: Props) => {
           <Text style={styles.location}>{matchDetails.location}</Text>
           
           <View style={styles.actionButtons}>
-            {isCoach && (
-              <TouchableOpacity 
-                style={[styles.button, styles.buttonBackground]} 
-                onPress={handleEditFormation}
-              >
-                <Ionicons name="create-outline" size={20} color={theme.colors.text.primary} />
-                <Text style={styles.buttonText}>Edit Formation</Text>
-              </TouchableOpacity>
-            )}
-            
             <TouchableOpacity 
               style={[styles.button, styles.statsButton, isLoadingStats && styles.disabledButton]} 
               onPress={handleStatsAction}
@@ -655,12 +645,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   formationEditButton: {
-    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   editButtonText: {
-    color: theme.colors.primary,
+    color: theme.colors.text.primary,
     fontSize: 14,
     fontWeight: '600',
+    marginLeft: 4,
   },
   field: {
     backgroundColor: '#1a8f3c', // Green field color

@@ -86,16 +86,6 @@ export const FormationTemplateScreen = ({ route, navigation }: Props) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Select Formation</Text>
-      </View>
-
       <ScrollView style={styles.formationList}>
         {formations.map((formation) => (
           <TouchableOpacity
@@ -133,30 +123,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a305e',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#2a305e',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: theme.colors.text.primary,
+    padding: 16,
   },
   formationList: {
-    padding: 20,
+    flex: 1,
   },
   formationCard: {
     backgroundColor: '#2a305e',

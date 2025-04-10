@@ -25,7 +25,9 @@ import {
   getEventAttendanceStatus, 
   getTeamAttendanceStats,
   getPendingMatchStats,
-  getPendingPlayerStats
+  getPendingPlayerStats,
+  getTeamAnnouncements,
+  getUserNotifications
 } from '../config/firebase';
 import { Event, TeamMember } from '../types/database';
 import { startOfDay, endOfDay } from '../utils/dateUtils';
@@ -87,9 +89,12 @@ export const TrainerDashboard = () => {
   } | null>(null);
   const [playerCount, setPlayerCount] = useState(0);
   const [eventCount, setEventCount] = useState(0);
-  const [pendingMatchStats, setPendingMatchStats] = useState<Event[]>([]);
+  const [pendingMatchStats, setPendingMatchStats] = useState<any[]>([]);
   const [pendingPlayerStats, setPendingPlayerStats] = useState<any[]>([]);
   const [loadingStats, setLoadingStats] = useState(false);
+  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [allUpdates, setAllUpdates] = useState<any[]>([]);
+  const [userNotifications, setUserNotifications] = useState<any[]>([]);
 
   const loadTeamData = useCallback(async () => {
     try {
@@ -148,21 +153,43 @@ export const TrainerDashboard = () => {
     }
   }, [user?.teamId]);
 
+  const loadNotifications = async () => {
+    try {
+      if (!auth.currentUser) return;
+      
+      const notifications = await getUserNotifications(auth.currentUser.uid);
+      console.log('User notifications loaded:', notifications.length);
+      setUserNotifications(notifications);
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user?.teamId) {
+      loadTeamData();
+      loadPendingStats();
+      loadAnnouncements();
+      loadAttendanceStats();
+      loadCounts();
+      loadTodayEvents();
+      loadNotifications();
+    }
+  }, [user?.teamId]);
+
   useFocusEffect(
     useCallback(() => {
       console.log('Dashboard focused - loading match statistics data');
-      loadTeamData();
-      loadMatchStatsData();
-    }, [])
+      if (user?.teamId) {
+        loadTeamData();
+        loadMatchStatsData();
+        loadAttendanceStats();
+        loadCounts();
+        loadTodayEvents();
+        loadNotifications();
+      }
+    }, [user?.teamId])
   );
-
-  useEffect(() => {
-    loadTeamData();
-    loadTodayEvents();
-    loadAttendanceStats();
-    loadCounts();
-    loadMatchStatsData();
-  }, [loadTeamData]);
 
   const checkAttendanceStatus = async (eventId: string) => {
     try {
@@ -263,6 +290,109 @@ export const TrainerDashboard = () => {
       console.error('Error loading counts:', error);
     }
   };
+
+  const loadPendingStats = async () => {
+    try {
+      setLoadingStats(true);
+      const matchStats = await getPendingMatchStats(user!.teamId!);
+      const playerStats = await getPendingPlayerStats(user!.teamId!);
+      setPendingMatchStats(matchStats || []);
+      setPendingPlayerStats(playerStats || []);
+    } catch (error) {
+      console.error('Error loading pending stats:', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  const loadAnnouncements = async () => {
+    try {
+      if (!user?.teamId) return;
+      const teamAnnouncements = await getTeamAnnouncements(user.teamId);
+      console.log('Loaded announcements:', teamAnnouncements);
+      setAnnouncements(teamAnnouncements || []);
+    } catch (error) {
+      console.error('Error loading announcements:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Combine all update types into a single sorted array
+    const matchUpdates = pendingMatchStats.map(match => ({
+      id: `match-${match.id}`,
+      type: 'match_stats',
+      title: 'Score Submission Required',
+      message: `${match.title || 'Match'} needs final score submission`,
+      timestamp: match.startTime?.toDate() || new Date(),
+      priority: 'urgent',
+      data: match,
+      navigateTo: () => navigation.navigate('UploadMatchStats' as never, { 
+        matchId: match.id,
+      } as never)
+    }));
+
+    const statsUpdates = pendingPlayerStats.map(stat => ({
+      id: `stats-${stat.id}`,
+      type: 'player_stats',
+      title: 'Player Stats Approval',
+      message: `${stat.playerName || 'Player'} stats need your approval`,
+      timestamp: new Date(stat.timestamp),
+      priority: 'urgent',
+      data: stat,
+      navigateTo: () => navigation.navigate('MatchStats' as never, { 
+        matchId: stat.matchId,
+        isHomeGame: true,
+      } as never)
+    }));
+
+    const announcementUpdates = announcements.map(announcement => {
+      console.log('Processing announcement for updates card:', announcement);
+      return {
+        id: `announcement-${announcement.id}`,
+        type: 'announcement',
+        title: 'Team Announcement',
+        message: announcement.title,
+        timestamp: announcement.createdAt?.toDate() || new Date(),
+        priority: announcement.priority === 'high' ? 'high' : 'normal',
+        data: announcement,
+        navigateTo: () => navigation.navigate('AllAnnouncements' as never)
+      };
+    });
+
+    // Add notifications updates
+    const notificationUpdates = userNotifications.map(notification => ({
+      id: `notification-${notification.id}`,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      timestamp: notification.createdAt?.toDate() || new Date(),
+      priority: notification.type === 'stats_needed' ? 'urgent' : 'high',
+      data: notification,
+      navigateTo: notification.type === 'stats_needed' && notification.relatedId 
+        ? () => navigation.navigate('UploadMatchStats' as never, { matchId: notification.relatedId } as never) 
+        : () => navigation.navigate('AllUpdates' as never)
+    }));
+
+    // Combine all updates
+    const combined = [
+      ...matchUpdates,
+      ...statsUpdates,
+      ...announcementUpdates,
+      ...notificationUpdates
+    ];
+
+    // Sort by priority (urgent > high > normal) then by timestamp (most recent first)
+    const priorityOrder = { urgent: 0, high: 1, normal: 2 };
+    const sorted = combined.sort((a, b) => {
+      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+        return priorityOrder[a.priority] - priorityOrder[b.priority];
+      }
+      return b.timestamp.getTime() - a.timestamp.getTime();
+    });
+
+    console.log('All sorted updates:', sorted);
+    setAllUpdates(sorted);
+  }, [pendingMatchStats, pendingPlayerStats, announcements, userNotifications]);
 
   const renderInjuredPlayersWarning = () => {
     if (injuredPlayersInMatches.length === 0) return null;
@@ -420,120 +550,68 @@ export const TrainerDashboard = () => {
               <Text style={styles.sectionTitle}>Updates</Text>
               <TouchableOpacity 
                 style={styles.viewAllButton}
-                onPress={() => navigation.navigate('Notifications' as never)}
+                onPress={() => {
+                  // Navigate to the all-in-one updates screen
+                  navigation.navigate('AllUpdates');
+                }}
               >
                 <Text style={styles.viewAllText}>View All</Text>
                 <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
               </TouchableOpacity>
             </View>
             
-            {/* Action Items (High Priority) */}
-            {pendingMatchStats.length > 0 && (
-              <TouchableOpacity 
-                style={styles.updateItem}
-                onPress={() => {
-                  navigation.navigate('UploadMatchStats' as never, { 
-                    matchId: pendingMatchStats[0].id,
-                  } as never);
-                }}
-              >
-                <View style={[styles.updateIconContainer, styles.priorityHighIcon]}>
-                  <Ionicons name="trophy-outline" size={20} color="#ff4444" />
-                </View>
-                <View style={styles.updateContent}>
-                  <View style={styles.updateHeader}>
-                    <Text style={styles.updateTitle}>Score Submission Required</Text>
-                    <View style={styles.priorityBadge}>
-                      <Text style={styles.priorityText}>Urgent</Text>
+            {loadingStats ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} style={{marginVertical: 20}} />
+            ) : allUpdates.length > 0 ? (
+              <>
+                {console.log('Displaying updates (first 3):', allUpdates.slice(0, 3))}
+                {allUpdates.slice(0, 3).map(update => (
+                  <TouchableOpacity 
+                    key={update.id}
+                    style={styles.updateItem}
+                    onPress={update.navigateTo}
+                  >
+                    <View style={[
+                      styles.updateIconContainer, 
+                      styles.standardIcon
+                    ]}>
+                      <Ionicons 
+                        name={
+                          update.type === 'match_stats' ? 'trophy-outline' : 
+                          update.type === 'player_stats' ? 'clipboard-outline' : 
+                          update.priority === 'high' ? 'alert-circle' : 'megaphone'
+                        } 
+                        size={20} 
+                        color={
+                          update.priority === 'urgent' ? '#ff4444' : 
+                          theme.colors.primary
+                        } 
+                      />
                     </View>
-                  </View>
-                  <Text style={styles.updateMessage}>
-                    {pendingMatchStats[0].title || 'Match'} - {pendingMatchStats.length} total
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-              </TouchableOpacity>
-            )}
-            
-            {pendingPlayerStats.length > 0 && (
-              <TouchableOpacity 
-                style={styles.updateItem}
-                onPress={() => {
-                  navigation.navigate('MatchStats' as never, { 
-                    matchId: pendingPlayerStats[0].matchId,
-                    isHomeGame: true,
-                  } as never);
-                }}
-              >
-                <View style={[styles.updateIconContainer, styles.priorityHighIcon]}>
-                  <Ionicons name="clipboard-outline" size={20} color="#ff4444" />
-                </View>
-                <View style={styles.updateContent}>
-                  <View style={styles.updateHeader}>
-                    <Text style={styles.updateTitle}>Player Stats Approval</Text>
-                    <View style={styles.priorityBadge}>
-                      <Text style={styles.priorityText}>Urgent</Text>
+                    <View style={styles.updateContent}>
+                      <View style={styles.updateHeader}>
+                        <Text style={styles.updateTitle}>{update.title}</Text>
+                        {update.priority === 'urgent' && (
+                          <View style={styles.priorityBadge}>
+                            <Text style={styles.priorityText}>Urgent</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.updateMessage}>{update.message}</Text>
+                      <Text style={styles.updateTime}>
+                        {formatUpdateTime(update.timestamp)}
+                      </Text>
                     </View>
-                  </View>
-                  <Text style={styles.updateMessage}>
-                    {pendingPlayerStats[0].playerName || 'Player'} - {pendingPlayerStats.length} total
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-              </TouchableOpacity>
-            )}
-            
-            {/* Latest Announcement */}
-            <TouchableOpacity 
-              style={styles.updateItem}
-              onPress={() => navigation.navigate('Announcements' as never)}
-            >
-              <View style={[styles.updateIconContainer, styles.standardIcon]}>
-                <Ionicons name="megaphone" size={20} color={theme.colors.primary} />
+                    <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
+                  </TouchableOpacity>
+                ))}
+              </>
+            ) : (
+              <View style={styles.emptyStateContainer}>
+                <Ionicons name="checkmark-circle" size={48} color={theme.colors.success} />
+                <Text style={styles.emptyStateText}>All caught up!</Text>
+                <Text style={styles.emptyStateSubtext}>No pending updates</Text>
               </View>
-              <View style={styles.updateContent}>
-                <View style={styles.updateHeader}>
-                  <Text style={styles.updateTitle}>Latest Announcement</Text>
-                  <Text style={styles.updateTime}>2h ago</Text>
-                </View>
-                <Text style={styles.updateMessage}>
-                  Next week's practice schedule has been updated...
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-            </TouchableOpacity>
-            
-            {/* Recent Notifications */}
-            {user?.id && (
-              <NotificationsSection 
-                userId={user.id}
-                title=""
-                limit={2}
-                showViewAll={false}
-                showEmptyState={false}
-              />
-            )}
-            
-            {/* Stats Summary (if no urgent items) */}
-            {pendingMatchStats.length === 0 && pendingPlayerStats.length === 0 && (
-              <TouchableOpacity 
-                style={styles.updateItem}
-                onPress={() => navigation.navigate('AttendanceDetails' as never)}
-              >
-                <View style={[styles.updateIconContainer, styles.infoIcon]}>
-                  <Ionicons name="analytics" size={20} color="#4CAF50" />
-                </View>
-                <View style={styles.updateContent}>
-                  <View style={styles.updateHeader}>
-                    <Text style={styles.updateTitle}>Team Summary</Text>
-                    <Text style={styles.updateTime}>Today</Text>
-                  </View>
-                  <Text style={styles.updateMessage}>
-                    Team attendance at {attendanceStats?.teamAverage || 0}% this season
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={theme.colors.text.secondary} />
-              </TouchableOpacity>
             )}
           </View>
 
@@ -932,14 +1010,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 12,
   },
-  priorityHighIcon: {
-    backgroundColor: 'rgba(255, 68, 68, 0.2)',
-  },
   standardIcon: {
     backgroundColor: 'rgba(225, 119, 119, 0.2)',
-  },
-  infoIcon: {
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
   },
   updateContent: {
     flex: 1,
@@ -974,4 +1046,40 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.colors.text.primary,
+    marginTop: 10,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: theme.colors.text.secondary,
+    marginTop: 4,
+  },
 });
+
+// Helper function to format update timestamps
+const formatUpdateTime = (timestamp: Date) => {
+  if (!timestamp) return '';
+  
+  const now = new Date();
+  const diffInHours = (now.getTime() - timestamp.getTime()) / (1000 * 60 * 60);
+  
+  if (diffInHours < 1) {
+    return 'Just now';
+  } else if (diffInHours < 24) {
+    const hours = Math.floor(diffInHours);
+    return `${hours}h ago`;
+  } else if (diffInHours < 48) {
+    return 'Yesterday';
+  } else {
+    const days = Math.floor(diffInHours / 24);
+    return `${days}d ago`;
+  }
+};

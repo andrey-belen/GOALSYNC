@@ -69,6 +69,8 @@ export interface Event {
     playerId: string;
     attended: boolean;
   }[];
+  // Score tracking
+  scoreSubmitted?: boolean;
 }
 
 export interface Attendance {
@@ -124,8 +126,20 @@ export interface UserData {
   teamId?: string;
   number?: string;
   position?: 'GK' | 'DEF' | 'MID' | 'FWD' | 'ST';
+  phone?: string;
+  location?: string;
+  photoURL?: string;
   createdAt: Timestamp | FieldValue;
   updatedAt: Timestamp | FieldValue;
+  notificationSettings?: {
+    pushEnabled: boolean;
+    emailEnabled: boolean;
+  };
+  privacySettings?: {
+    showEmail: boolean;
+    showPhone: boolean;
+    showLocation: boolean;
+  };
 }
 
 export interface PlayerMatchStats {

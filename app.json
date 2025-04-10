@@ -14,7 +14,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourexpousername.GOALSYNC"
+      "bundleIdentifier": "com.yourexpousername.GOALSYNC",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,9 +27,12 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
       ],
-      "package": "com.yourexpousername.GOALSYNC"
+      "package": "com.yourexpousername.GOALSYNC",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -49,7 +57,17 @@
       "lanType": "ip"
     },
     "plugins": [
-      "expo-barcode-scanner"
+      "expo-barcode-scanner",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff",
+          "sounds": [
+            "./assets/notification-sound.wav"
+          ]
+        }
+      ]
     ]
   }
 }

@@ -140,6 +140,8 @@ export const ScheduleScreen = ({ navigation }: Props) => {
   const [loading, setLoading] = useState(true);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'date' | 'time'>('date');
+  const [currentEditingDate, setCurrentEditingDate] = useState<'start' | 'end'>('start');
   const [teamId, setTeamId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -332,21 +334,83 @@ export const ScheduleScreen = ({ navigation }: Props) => {
   };
 
   const handleStartTimeChange = (event: any, selectedDate?: Date) => {
-    setShowStartPicker(false);
+    if (Platform.OS === 'android') {
+      setShowStartPicker(false);
+    }
+    
     if (selectedDate) {
-      setEventDetails(prev => ({
-        ...prev,
-        startTime: selectedDate,
-        endTime: new Date(selectedDate.getTime() + 60 * 60 * 1000),
-      }));
+      if (datePickerMode === 'date') {
+        // Keep the time from the current startTime but update the date
+        const newDate = new Date(selectedDate);
+        const currentTime = eventDetails.startTime;
+        newDate.setHours(currentTime.getHours(), currentTime.getMinutes());
+        
+        setEventDetails(prev => ({
+          ...prev,
+          startTime: newDate,
+          endTime: new Date(newDate.getTime() + 60 * 60 * 1000),
+        }));
+        
+        // Switch to time picker after setting date
+        setDatePickerMode('time');
+      } else {
+        // Update the time
+        const newTime = new Date(eventDetails.startTime);
+        newTime.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+        
+        setEventDetails(prev => ({
+          ...prev,
+          startTime: newTime,
+          endTime: new Date(newTime.getTime() + 60 * 60 * 1000),
+        }));
+        
+        // Close picker after setting time
+        setShowStartPicker(false);
+        setDatePickerMode('date');
+      }
     }
   };
 
   const handleEndTimeChange = (event: any, selectedDate?: Date) => {
-    setShowEndPicker(false);
-    if (selectedDate) {
-      setEventDetails(prev => ({ ...prev, endTime: selectedDate }));
+    if (Platform.OS === 'android') {
+      setShowEndPicker(false);
     }
+    
+    if (selectedDate) {
+      if (datePickerMode === 'date') {
+        // Keep the time from the current endTime but update the date
+        const newDate = new Date(selectedDate);
+        const currentTime = eventDetails.endTime;
+        newDate.setHours(currentTime.getHours(), currentTime.getMinutes());
+        
+        setEventDetails(prev => ({ ...prev, endTime: newDate }));
+        
+        // Switch to time picker after setting date
+        setDatePickerMode('time');
+      } else {
+        // Update the time
+        const newTime = new Date(eventDetails.endTime);
+        newTime.setHours(selectedDate.getHours(), selectedDate.getMinutes());
+        
+        setEventDetails(prev => ({ ...prev, endTime: newTime }));
+        
+        // Close picker after setting time
+        setShowEndPicker(false);
+        setDatePickerMode('date');
+      }
+    }
+  };
+
+  const openStartDatePicker = () => {
+    setCurrentEditingDate('start');
+    setDatePickerMode('date');
+    setShowStartPicker(true);
+  };
+
+  const openEndDatePicker = () => {
+    setCurrentEditingDate('end');
+    setDatePickerMode('date');
+    setShowEndPicker(true);
   };
 
   return (
@@ -354,298 +418,375 @@ export const ScheduleScreen = ({ navigation }: Props) => {
       style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView style={styles.scrollContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.title}>New Event</Text>
-          <TouchableOpacity 
-            style={[styles.saveButton, loading && styles.saveButtonDisabled]} 
-            onPress={handleSave}
-            disabled={loading}
-          >
-            <Text style={styles.saveButtonText}>
-              {loading ? 'Saving...' : 'Save'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Basic fields for all event types */}
-        <View style={styles.formSection}>
-          <TextInput
-            style={styles.input}
-            placeholder="Event Title"
-            placeholderTextColor="#666"
-            value={eventDetails.title}
-            onChangeText={title => setEventDetails(prev => ({ ...prev, title }))}
-          />
-
-          <View style={styles.typeSelector}>
-            <TouchableOpacity
-              style={[
-                styles.typeButton,
-                eventDetails.type === 'training' && styles.typeButtonSelected,
-              ]}
-              onPress={() => handleEventTypeChange('training')}
-            >
-              <Ionicons 
-                name="fitness" 
-                size={20} 
-                color={eventDetails.type === 'training' ? '#fff' : '#666'} 
-              />
-              <Text style={[
-                styles.typeButtonText,
-                eventDetails.type === 'training' && styles.typeButtonTextSelected,
-              ]}>Training</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.typeButton,
-                eventDetails.type === 'match' && styles.typeButtonSelected,
-              ]}
-              onPress={() => handleEventTypeChange('match')}
-            >
-              <Ionicons 
-                name="football" 
-                size={20} 
-                color={eventDetails.type === 'match' ? '#fff' : '#666'} 
-              />
-              <Text style={[
-                styles.typeButtonText,
-                eventDetails.type === 'match' && styles.typeButtonTextSelected,
-              ]}>Match</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.typeButton,
-                eventDetails.type === 'meeting' && styles.typeButtonSelected,
-              ]}
-              onPress={() => handleEventTypeChange('meeting')}
-            >
-              <Ionicons 
-                name="people" 
-                size={20} 
-                color={eventDetails.type === 'meeting' ? '#fff' : '#666'} 
-              />
-              <Text style={[
-                styles.typeButtonText,
-                eventDetails.type === 'meeting' && styles.typeButtonTextSelected,
-              ]}>Meeting</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.dateTimeButton}
-            onPress={() => setShowStartPicker(true)}
-          >
-            <View style={styles.dateTimeContent}>
-              <Text style={styles.dateTimeLabel}>Start Time</Text>
-              <Text style={styles.dateTimeText}>
-                {formatDate(eventDetails.startTime)}
-              </Text>
-              <Text style={styles.dateTimeText}>
-                {formatTime(eventDetails.startTime)}
-              </Text>
-            </View>
-            <Ionicons name="calendar" size={24} color="#666" />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.dateTimeButton}
-            onPress={() => setShowEndPicker(true)}
-          >
-            <View style={styles.dateTimeContent}>
-              <Text style={styles.dateTimeLabel}>End Time</Text>
-              <Text style={styles.dateTimeText}>
-                {formatDate(eventDetails.endTime)}
-              </Text>
-              <Text style={styles.dateTimeText}>
-                {formatTime(eventDetails.endTime)}
-              </Text>
-            </View>
-            <Ionicons name="calendar" size={24} color="#666" />
-          </TouchableOpacity>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Location"
-            placeholderTextColor="#666"
-            value={eventDetails.location}
-            onChangeText={location => setEventDetails(prev => ({ ...prev, location }))}
-          />
-        </View>
-
-        {/* Match-specific fields */}
-        {eventDetails.type === 'match' && (
-          <View style={styles.matchSection}>
-            <Text style={styles.sectionTitle}>Match Details</Text>
-            
-            <View style={styles.matchDetailsRow}>
-              <View style={styles.opponentContainer}>
-                <Text style={styles.fieldLabel}>Opponent</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Opponent Team Name"
-                  placeholderTextColor="#666"
-                  value={eventDetails.opponent}
-                  onChangeText={opponent => setEventDetails(prev => ({ ...prev, opponent }))}
-                />
+      {/* Date/Time Picker Modal for iOS */}
+      {Platform.OS === 'ios' && (showStartPicker || showEndPicker) && (
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={showStartPicker || showEndPicker}
+          onRequestClose={() => {
+            setShowStartPicker(false);
+            setShowEndPicker(false);
+            setDatePickerMode('date');
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {currentEditingDate === 'start' ? 'Set Start' : 'Set End'} {datePickerMode === 'date' ? 'Date' : 'Time'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowStartPicker(false);
+                    setShowEndPicker(false);
+                    setDatePickerMode('date');
+                  }}
+                >
+                  <Ionicons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
               </View>
-
-              <View style={styles.homeGameContainer}>
-                <Text style={styles.fieldLabel}>Match Location</Text>
-                <View style={styles.toggleContainer}>
-                  <Text style={styles.toggleLabel}>Home Game</Text>
+              
+              <DateTimePicker
+                value={currentEditingDate === 'start' ? eventDetails.startTime : eventDetails.endTime}
+                mode={datePickerMode}
+                display="spinner"
+                onChange={currentEditingDate === 'start' ? handleStartTimeChange : handleEndTimeChange}
+                textColor="#fff"
+                style={styles.dateTimePicker}
+              />
+              
+              <View style={styles.modalButtons}>
+                {datePickerMode === 'date' ? (
                   <TouchableOpacity
-                    style={[
-                      styles.toggle,
-                      eventDetails.isHomeGame && styles.toggleSelected,
-                    ]}
-                    onPress={() => setEventDetails(prev => ({ 
-                      ...prev, 
-                      isHomeGame: !prev.isHomeGame 
-                    }))}
+                    style={styles.modalButton}
+                    onPress={() => setDatePickerMode('time')}
                   >
-                    <View style={[
-                      styles.toggleHandle,
-                      eventDetails.isHomeGame && styles.toggleHandleSelected,
-                    ]} />
+                    <Text style={styles.modalButtonText}>Next</Text>
                   </TouchableOpacity>
-                </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.modalButton}
+                    onPress={() => {
+                      setShowStartPicker(false);
+                      setShowEndPicker(false);
+                      setDatePickerMode('date');
+                    }}
+                  >
+                    <Text style={styles.modalButtonText}>Done</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
+          </View>
+        </Modal>
+      )}
 
-            <View style={styles.formationSection}>
-              <Text style={styles.fieldLabel}>Team Setup</Text>
+      <View style={styles.screenContainer}>
+        <ScrollView 
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContentContainer}
+        >
+          <View style={styles.header}>
+            <TouchableOpacity 
+              style={styles.backButton} 
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            <Text style={styles.title}>New Event</Text>
+            <View style={styles.placeholderView} />
+          </View>
+
+          {/* Basic fields for all event types */}
+          <View style={styles.formSection}>
+            <TextInput
+              style={styles.input}
+              placeholder="Event Title"
+              placeholderTextColor="#666"
+              value={eventDetails.title}
+              onChangeText={title => setEventDetails(prev => ({ ...prev, title }))}
+            />
+
+            <View style={styles.typeSelector}>
               <TouchableOpacity
-                style={styles.formationButton}
-                onPress={() => navigation.navigate('FormationTemplate', {
-                  onFormationSelect: (selectedFormation: string) => {
-                    // Update formation and clear roster when selecting a new formation
-                    setEventDetails(prev => ({
-                      ...prev,
-                      formation: selectedFormation,
-                      roster: [] // Clear roster when changing formation
-                    }));
-                    // First navigate back to Schedule screen
-                    navigation.goBack();
-                    // Then navigate to FormationSetup with the selected formation
-                    setTimeout(() => {
-                      navigation.navigate('FormationSetup', {
-                        formation: selectedFormation,
-                        players: eventDetails.roster || [],
-                        onComplete: (players: SelectedPlayer[]) => {
-                          setEventDetails(prev => ({
-                            ...prev,
-                            formation: selectedFormation,
-                            roster: players
-                          }));
-                        },
-                        // Add match details for confirmation screen
-                        id: 'temp-id', // Temporary ID for new match
-                        title: eventDetails.title,
-                        date: eventDetails.startTime,
-                        time: eventDetails.startTime,
-                        location: eventDetails.location,
-                        isHomeGame: eventDetails.isHomeGame || false,
-                        opponent: eventDetails.opponent || '',
-                        notes: eventDetails.description
-                      });
-                    }, 100); // Small delay to ensure smooth navigation
-                  }
-                })}
+                style={[
+                  styles.typeButton,
+                  eventDetails.type === 'training' && styles.typeButtonSelected,
+                ]}
+                onPress={() => handleEventTypeChange('training')}
               >
-                <View style={styles.formationButtonContent}>
-                  <Text style={styles.formationButtonText}>
-                    {eventDetails.formation ? 'Edit Formation & Positions' : 'Set Formation & Positions'}
-                  </Text>
-                  <Ionicons name="football-outline" size={24} color="#fff" />
-                </View>
+                <Ionicons 
+                  name="fitness" 
+                  size={20} 
+                  color={eventDetails.type === 'training' ? '#fff' : '#666'} 
+                />
+                <Text style={[
+                  styles.typeButtonText,
+                  eventDetails.type === 'training' && styles.typeButtonTextSelected,
+                ]}>Training</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  eventDetails.type === 'match' && styles.typeButtonSelected,
+                ]}
+                onPress={() => handleEventTypeChange('match')}
+              >
+                <Ionicons 
+                  name="football" 
+                  size={20} 
+                  color={eventDetails.type === 'match' ? '#fff' : '#666'} 
+                />
+                <Text style={[
+                  styles.typeButtonText,
+                  eventDetails.type === 'match' && styles.typeButtonTextSelected,
+                ]}>Match</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.typeButton,
+                  eventDetails.type === 'meeting' && styles.typeButtonSelected,
+                ]}
+                onPress={() => handleEventTypeChange('meeting')}
+              >
+                <Ionicons 
+                  name="people" 
+                  size={20} 
+                  color={eventDetails.type === 'meeting' ? '#fff' : '#666'} 
+                />
+                <Text style={[
+                  styles.typeButtonText,
+                  eventDetails.type === 'meeting' && styles.typeButtonTextSelected,
+                ]}>Meeting</Text>
+              </TouchableOpacity>
+            </View>
 
-              {eventDetails.formation && (
-                <View style={styles.selectedFormationInfo}>
-                  <Text style={styles.selectedFormationText}>
-                    Current Formation: {eventDetails.formation}
-                  </Text>
-                  <Text style={styles.selectedFormationText}>
-                    Players in Formation: {eventDetails.roster?.length || 0}
-                  </Text>
+            <TouchableOpacity
+              style={styles.dateTimeButton}
+              onPress={openStartDatePicker}
+            >
+              <View style={styles.dateTimeContent}>
+                <Text style={styles.dateTimeLabel}>Start Time</Text>
+                <Text style={styles.dateTimeText}>
+                  {formatDate(eventDetails.startTime)}
+                </Text>
+                <Text style={styles.dateTimeText}>
+                  {formatTime(eventDetails.startTime)}
+                </Text>
+              </View>
+              <Ionicons name="calendar" size={24} color="#666" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.dateTimeButton}
+              onPress={openEndDatePicker}
+            >
+              <View style={styles.dateTimeContent}>
+                <Text style={styles.dateTimeLabel}>End Time</Text>
+                <Text style={styles.dateTimeText}>
+                  {formatDate(eventDetails.endTime)}
+                </Text>
+                <Text style={styles.dateTimeText}>
+                  {formatTime(eventDetails.endTime)}
+                </Text>
+              </View>
+              <Ionicons name="calendar" size={24} color="#666" />
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Location"
+              placeholderTextColor="#666"
+              value={eventDetails.location}
+              onChangeText={location => setEventDetails(prev => ({ ...prev, location }))}
+            />
+          </View>
+
+          {/* Match-specific fields */}
+          {eventDetails.type === 'match' && (
+            <View style={styles.matchSection}>
+              <Text style={styles.sectionTitle}>Match Details</Text>
+              
+              <View style={styles.matchDetailsRow}>
+                <View style={styles.opponentContainer}>
+                  <Text style={styles.fieldLabel}>Opponent</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Opponent Team Name"
+                    placeholderTextColor="#666"
+                    value={eventDetails.opponent}
+                    onChangeText={opponent => setEventDetails(prev => ({ ...prev, opponent }))}
+                  />
                 </View>
-              )}
+
+                <View style={styles.homeGameContainer}>
+                  <Text style={styles.fieldLabel}>Match Location</Text>
+                  <View style={styles.toggleContainer}>
+                    <Text style={styles.toggleLabel}>Home Game</Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggle,
+                        eventDetails.isHomeGame && styles.toggleSelected,
+                      ]}
+                      onPress={() => setEventDetails(prev => ({ 
+                        ...prev, 
+                        isHomeGame: !prev.isHomeGame 
+                      }))}
+                    >
+                      <View style={[
+                        styles.toggleHandle,
+                        eventDetails.isHomeGame && styles.toggleHandleSelected,
+                      ]} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formationSection}>
+                <Text style={styles.fieldLabel}>Team Setup</Text>
+                <TouchableOpacity
+                  style={styles.formationButton}
+                  onPress={() => navigation.navigate('FormationTemplate', {
+                    onFormationSelect: (selectedFormation: string) => {
+                      // Update formation and clear roster when selecting a new formation
+                      setEventDetails(prev => ({
+                        ...prev,
+                        formation: selectedFormation,
+                        roster: [] // Clear roster when changing formation
+                      }));
+                      // First navigate back to Schedule screen
+                      navigation.goBack();
+                      // Then navigate to FormationSetup with the selected formation
+                      setTimeout(() => {
+                        navigation.navigate('FormationSetup', {
+                          formation: selectedFormation,
+                          players: eventDetails.roster || [],
+                          onComplete: (players: SelectedPlayer[]) => {
+                            setEventDetails(prev => ({
+                              ...prev,
+                              formation: selectedFormation,
+                              roster: players
+                            }));
+                          },
+                          // Add match details for confirmation screen
+                          id: 'temp-id', // Temporary ID for new match
+                          title: eventDetails.title,
+                          date: eventDetails.startTime,
+                          time: eventDetails.startTime,
+                          location: eventDetails.location,
+                          isHomeGame: eventDetails.isHomeGame || false,
+                          opponent: eventDetails.opponent || '',
+                          notes: eventDetails.description
+                        });
+                      }, 100); // Small delay to ensure smooth navigation
+                    }
+                  })}
+                >
+                  <View style={styles.formationButtonContent}>
+                    <Text style={styles.formationButtonText}>
+                      {eventDetails.formation ? 'Edit Formation & Positions' : 'Set Formation & Positions'}
+                    </Text>
+                    <Ionicons name="football-outline" size={24} color="#fff" />
+                  </View>
+                </TouchableOpacity>
+
+                {eventDetails.formation && (
+                  <View style={styles.selectedFormationInfo}>
+                    <Text style={styles.selectedFormationText}>
+                      Current Formation: {eventDetails.formation}
+                    </Text>
+                    <Text style={styles.selectedFormationText}>
+                      Players in Formation: {eventDetails.roster?.length || 0}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Common fields for all event types */}
+          <View style={styles.formSection}>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Description (optional)"
+              placeholderTextColor="#666"
+              value={eventDetails.description}
+              onChangeText={description => setEventDetails(prev => ({ ...prev, description }))}
+              multiline
+              numberOfLines={4}
+            />
+
+            <View style={styles.toggleContainer}>
+              <Text style={styles.toggleLabel}>Outdoor Event</Text>
+              <TouchableOpacity
+                style={[
+                  styles.toggle,
+                  eventDetails.isOutdoor && styles.toggleSelected,
+                ]}
+                onPress={() => setEventDetails(prev => ({ 
+                  ...prev, 
+                  isOutdoor: !prev.isOutdoor 
+                }))}
+              >
+                <View style={[
+                  styles.toggleHandle,
+                  eventDetails.isOutdoor && styles.toggleHandleSelected,
+                ]} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.toggleContainer}>
+              <Text style={styles.toggleLabel}>Attendance Required</Text>
+              <TouchableOpacity
+                style={[
+                  styles.toggle,
+                  eventDetails.isAttendanceRequired && styles.toggleSelected,
+                ]}
+                onPress={() => setEventDetails(prev => ({ 
+                  ...prev, 
+                  isAttendanceRequired: !prev.isAttendanceRequired 
+                }))}
+              >
+                <View style={[
+                  styles.toggleHandle,
+                  eventDetails.isAttendanceRequired && styles.toggleHandleSelected,
+                ]} />
+              </TouchableOpacity>
             </View>
           </View>
-        )}
 
-        {/* Common fields for all event types */}
-        <View style={styles.formSection}>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Description (optional)"
-            placeholderTextColor="#666"
-            value={eventDetails.description}
-            onChangeText={description => setEventDetails(prev => ({ ...prev, description }))}
-            multiline
-            numberOfLines={4}
-          />
+          {/* Add padding at the bottom for the floating button */}
+          <View style={styles.bottomPadding} />
+        </ScrollView>
+        
+        {/* Fixed floating save button */}
+        <TouchableOpacity
+          style={[styles.floatingSaveButton, loading && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={loading}
+        >
+          <Text style={styles.floatingSaveButtonText}>
+            {loading ? 'Saving...' : 'Save Event'}
+          </Text>
+          <Ionicons name="save-outline" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.toggleContainer}>
-            <Text style={styles.toggleLabel}>Outdoor Event</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggle,
-                eventDetails.isOutdoor && styles.toggleSelected,
-              ]}
-              onPress={() => setEventDetails(prev => ({ 
-                ...prev, 
-                isOutdoor: !prev.isOutdoor 
-              }))}
-            >
-              <View style={[
-                styles.toggleHandle,
-                eventDetails.isOutdoor && styles.toggleHandleSelected,
-              ]} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.toggleContainer}>
-            <Text style={styles.toggleLabel}>Attendance Required</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggle,
-                eventDetails.isAttendanceRequired && styles.toggleSelected,
-              ]}
-              onPress={() => setEventDetails(prev => ({ 
-                ...prev, 
-                isAttendanceRequired: !prev.isAttendanceRequired 
-              }))}
-            >
-              <View style={[
-                styles.toggleHandle,
-                eventDetails.isAttendanceRequired && styles.toggleHandleSelected,
-              ]} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </ScrollView>
-
-      {showStartPicker && (
+      {/* Android Date Picker - shown inline */}
+      {Platform.OS === 'android' && showStartPicker && (
         <DateTimePicker
           value={eventDetails.startTime}
-          mode="datetime"
+          mode={datePickerMode}
           display="default"
           onChange={handleStartTimeChange}
         />
       )}
 
-      {showEndPicker && (
+      {Platform.OS === 'android' && showEndPicker && (
         <DateTimePicker
           value={eventDetails.endTime}
-          mode="datetime"
+          mode={datePickerMode}
           display="default"
           onChange={handleEndTimeChange}
         />
@@ -658,15 +799,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#1a1f3d',
+    paddingTop: Platform.OS === 'ios' ? 50 : 0, // Add safe area padding for iOS
   },
   scrollContainer: {
     flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20, // Add bottom padding for scrolling content
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
+    marginBottom: 20,
+    paddingBottom: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#2a305e',
   },
@@ -683,18 +829,8 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  saveButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#e17777',
-    borderRadius: 20,
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+  screenContainer: {
+    flex: 1,
   },
   formSection: {
     backgroundColor: '#2a305e',
@@ -847,5 +983,82 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     marginBottom: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#2a305e',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  dateTimePicker: {
+    height: 200,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    backgroundColor: '#e17777',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  bottomPadding: {
+    height: 80, // Adjust this value based on the height of the floating button
+  },
+  floatingSaveButton: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: theme.colors.primary,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  floatingSaveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 18,
+  },
+  placeholderView: {
+    width: 40, // Equal to the back button width
   },
 }); 

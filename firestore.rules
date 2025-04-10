@@ -20,11 +20,24 @@ service cloud.firestore {
     }
 
     function isTeamMember(teamId) {
+      // Get the team document
       let team = get(/databases/$(database)/documents/teams/$(teamId));
-      return team != null && (
-        team.data.trainerId == request.auth.uid ||
-        team.data.players.hasAny([request.auth.uid])
-      );
+      
+      // Get the user document
+      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      
+      // Check if the user is the trainer
+      let isTrainer = team != null && team.data.trainerId == request.auth.uid;
+      
+      // Check if the user is a player of the team
+      let isPlayer = user != null && user.data.teamId == teamId;
+      
+      // Also check if the user is in the players array of the team
+      let isInPlayersArray = team != null && team.data.players != null && 
+                           team.data.players.hasAny([request.auth.uid]);
+      
+      // Return true if the user is either the trainer, has matching teamId, or is in the players array
+      return isTrainer || isPlayer || isInPlayersArray;
     }
 
     function isJoiningTeam() {
@@ -43,6 +56,17 @@ service cloud.firestore {
     // Announcements rules
     match /announcements/{announcementId} {
       allow read: if isAuthenticated() && isTeamMember(resource.data.teamId);
+      
+      // Allow listing announcements (for queries)
+      allow list: if isAuthenticated() && (
+        // Check if the query is filtering by a team ID that the user is a member of
+        request.query.limit <= 50 &&
+        request.query.filters.size() >= 1 &&
+        request.query.filters[0].op == "==" && 
+        request.query.filters[0].path == "teamId" && 
+        isTeamMember(request.query.filters[0].value)
+      );
+      
       allow create: if isAuthenticated() && isTeamTrainer(request.resource.data.teamId);
       allow update: if isAuthenticated() && (
         // Allow trainers to update any announcement for their team
@@ -57,10 +81,35 @@ service cloud.firestore {
     
     // Notifications rules
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      // Allow reading single notification documents
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || 
+        (resource.data.teamId != null && isTeamTrainer(resource.data.teamId))
+      );
+      
+      // Allow listing notifications (for queries)
+      allow list: if isAuthenticated() && (
+        request.query.limit <= 50 &&
+        (
+          // Check if the query is filtering by the current user's ID
+          (request.query.filters.size() >= 1 &&
+          request.query.filters[0].op == "==" && 
+          request.query.filters[0].path == "userId" && 
+          request.query.filters[0].value == request.auth.uid) ||
+          
+          // Allow team trainer to see all team notifications
+          (request.query.filters.size() >= 1 &&
+          request.query.filters[0].op == "==" && 
+          request.query.filters[0].path == "teamId" && 
+          isTeamTrainer(request.query.filters[0].value))
+        )
+      );
+      
       allow create: if isAuthenticated() && (
         isTrainer() || 
-        request.resource.data.userId == request.auth.uid
+        request.resource.data.userId == request.auth.uid ||
+        (request.resource.data.teamId != null && isTeamMember(request.resource.data.teamId) && 
+         request.resource.data.type == 'stats_needed')
       );
       allow update: if isAuthenticated() && (
         // Users can only mark their own notifications as read
@@ -137,15 +186,19 @@ service cloud.firestore {
         return matchStats != null ? matchStats.data.visibility : null;
       }
       
+      function getMatchTeamId(matchId) {
+        let event = get(/databases/$(database)/documents/events/$(matchId));
+        return event != null ? event.data.teamId : null;
+      }
+      
       allow read: if isSignedIn() && (
         isOwnStats(resource.data.playerId) || 
         isTrainer() ||
         (resource.data.matchId != null && getMatchVisibility(resource.data.matchId) == 'public') ||
-        (resource.data.matchId != null && 
-         isTeamMember(get(/databases/$(database)/documents/events/$(resource.data.matchId)).data.teamId))
+        (resource.data.matchId != null && isTeamMember(getMatchTeamId(resource.data.matchId)))
       );
-      allow create: if isOwnStats(request.resource.data.playerId) || isTrainer();
-      allow update: if (isOwnStats(resource.data.playerId) && resource.data.status == 'pending') || isTrainer();
+      allow create: if isSignedIn() && (isOwnStats(request.resource.data.playerId) || isTrainer());
+      allow update: if isSignedIn() && ((isOwnStats(resource.data.playerId) && resource.data.status == 'pending') || isTrainer());
       allow delete: if isTrainer();
     }
 

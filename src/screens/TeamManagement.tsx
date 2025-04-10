@@ -214,10 +214,7 @@ export const TeamManagement = () => {
   return (
     <ScrollView style={styles.container}>
       <QRCodeModal />
-      <View style={styles.header}>
-        <Text style={styles.title}>Team Settings</Text>
-      </View>
-
+      
       {!team ? (
         // Create Team Section
         <View style={styles.section}>
@@ -312,21 +309,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
+    paddingTop: 16,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: theme.colors.background,
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 10,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
   },
   section: {
     padding: 20,

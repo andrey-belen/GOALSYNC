@@ -96,13 +96,26 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
 
   // Check if all player stats are complete (reviewed and approved)
   const checkAllStatsComplete = () => {
-    // If there are no player stats, they can't be complete
-    if (playerStats.length === 0) return false;
+    console.log('Checking all stats complete, playerStats count:', playerStats.length);
+    
+    // If there are no player stats at all, return false
+    if (playerStats.length === 0) {
+      console.log('No player stats, returning false');
+      return false;
+    }
     
     // Check if any stats are pending or rejected
     const pendingOrRejected = playerStats.some(
       stat => stat.status === 'pending' || stat.status === 'rejected'
     );
+    
+    // Log the result to help debug
+    console.log('Any pending or rejected stats:', pendingOrRejected);
+    console.log('All stats complete:', !pendingOrRejected);
+    
+    // Get all approved stats for debugging
+    const approvedStats = playerStats.filter(stat => stat.status === 'approved');
+    console.log('Number of approved stats:', approvedStats.length);
     
     return !pendingOrRejected;
   };
@@ -149,18 +162,73 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
     try {
       setIsReleaseStatsLoading(true);
       
-      // Check if all stats are complete and approved
-      const allComplete = checkAllStatsComplete();
+      console.log('Attempting to release stats...');
+      console.log('Match ID:', matchId);
+      console.log('All stats complete:', checkAllStatsComplete());
+      console.log('Number of player stats:', playerStats.length);
+      console.log('Approved stats:', playerStats.filter(s => s.status === 'approved').length);
+      console.log('Pending stats:', playerStats.filter(s => s.status === 'pending').length);
+      console.log('Rejected stats:', playerStats.filter(s => s.status === 'rejected').length);
       
-      if (!allComplete) {
+      // Check if the sum of player goals matches the match score
+      const approvedStats = playerStats.filter(s => s.status === 'approved');
+      const totalPlayerGoals = approvedStats.reduce((sum, stat) => sum + (stat.stats.goals || 0), 0);
+      const matchScoreGoals = score.home + score.away;
+      
+      console.log('Total player goals:', totalPlayerGoals);
+      console.log('Match score goals:', matchScoreGoals);
+      
+      if (totalPlayerGoals !== matchScoreGoals) {
+        setIsReleaseStatsLoading(false);
+        
         Alert.alert(
-          'Incomplete Stats',
-          'Not all player statistics have been reviewed and approved. Please review all pending statistics before releasing.',
-          [{ text: 'OK' }]
+          'Score Mismatch',
+          `The sum of player goals (${totalPlayerGoals}) doesn't match the match score (${matchScoreGoals}). Do you want to update the match score or continue with the discrepancy?`,
+          [
+            {
+              text: 'Update Match Score',
+              onPress: () => {
+                // Suggest updating the match score to match the player goals
+                setScore({
+                  home: totalPlayerGoals, // This is simplified - in reality you might need to distinguish home/away
+                  away: 0
+                });
+                Alert.alert(
+                  'Score Updated',
+                  'Please save the updated match score and try releasing again.',
+                  [{ text: 'OK' }]
+                );
+              },
+            },
+            {
+              text: 'Continue Anyway',
+              onPress: () => {
+                // Proceed with releasing despite the mismatch
+                completeReleaseStats();
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
         );
         return;
       }
       
+      // If no mismatch, proceed with releasing
+      await completeReleaseStats();
+      
+    } catch (error) {
+      console.error('Error releasing match statistics:', error);
+      Alert.alert('Error', 'Failed to release match statistics. Please try again.');
+      setIsReleaseStatsLoading(false);
+    }
+  };
+  
+  // Helper function to complete the release process
+  const completeReleaseStats = async () => {
+    try {
       // Update the match stats document to make it publicly visible
       const matchStatsRef = doc(db, 'matchStats', matchId);
       await updateDoc(matchStatsRef, {
@@ -168,6 +236,8 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
         allStatsComplete: true,
         updatedAt: Timestamp.now()
       });
+      
+      console.log('Successfully updated matchStats document');
       
       // Update local state to reflect the change immediately
       if (matchStats && setMatchStats) {
@@ -185,7 +255,7 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
         [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('Error releasing match statistics:', error);
+      console.error('Error completing release of match statistics:', error);
       Alert.alert('Error', 'Failed to release match statistics. Please try again.');
     } finally {
       setIsReleaseStatsLoading(false);
@@ -281,7 +351,7 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
         // Check if we should auto-release the stats (same logic as in handleReviewPlayerStats)
         await checkAndAutoReleaseStats(updatedPlayerStats);
       } else {
-        Alert.alert('Success', 'Player statistics have been updated successfully');
+      Alert.alert('Success', 'Player statistics have been updated successfully');
       }
     } catch (error) {
       console.error('Error updating stats:', error);
@@ -313,8 +383,8 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
     }
   };
 
-  const isStatsReleased = matchStats?.visibility === 'public';
   const allStatsComplete = checkAllStatsComplete();
+  const isStatsReleased = matchStats?.visibility === 'public';
 
   return (
     <ScrollView style={styles.container}>
@@ -393,10 +463,10 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
             <TouchableOpacity
               style={[
                 styles.releaseButton,
-                (!allStatsComplete || isReleaseStatsLoading) && styles.releaseButtonDisabled
+                isReleaseStatsLoading && styles.releaseButtonDisabled
               ]}
               onPress={handleReleaseStats}
-              disabled={!allStatsComplete || isReleaseStatsLoading}
+              disabled={isReleaseStatsLoading}
             >
               <Text style={styles.releaseButtonText}>
                 {isReleaseStatsLoading ? 'Releasing...' : 'Release Stats to Players'}
@@ -489,7 +559,7 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
               >
                 <Text style={styles.editButtonText}>Edit</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.actionButton, styles.approveButton]}
                 onPress={() => handleReviewPlayerStats(
                   stat.id, 
@@ -499,7 +569,7 @@ export const TrainerMatchStatsForm: React.FC<TrainerMatchStatsFormProps> = ({
               >
                 <Text style={styles.actionButtonText}>Approve</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.actionButton, styles.rejectButton]}
                 onPress={() => {
                   Alert.prompt(

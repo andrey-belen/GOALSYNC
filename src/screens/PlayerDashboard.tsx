@@ -19,8 +19,8 @@ import { Event, TeamMember } from '../types/database';
 import { isToday, format } from 'date-fns';
 import { PlayerAttendanceCard } from '../components/PlayerAttendanceCard';
 import { PlayerPositionCard } from '../components/PlayerPositionCard';
-import { AnnouncementsCard } from '../components/AnnouncementsCard';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
+import { TeamUpdatesCard } from '../components/TeamUpdatesCard';
 import { NotificationsSection } from '../components/NotificationsSection';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -405,31 +405,20 @@ export const PlayerDashboard = () => {
           <>
             {renderInvitations()}
 
-            <View style={styles.statsRow}>
-              <PlayerAttendanceCard 
-                attendanceRate={playerStats?.percentage || 0}
-                present={playerStats?.attendance?.present || 0}
-                total={playerStats?.attendance?.total || 0}
-              />
-              <PlayerPositionCard position={user?.position || 'Unknown'} />
-            </View>
-
             {renderStatsNotifications()}
 
-            {/* Player Notifications */}
-            {user?.id && (
-              <NotificationsSection 
-                userId={user.id}
-                title="Recent Notifications"
-                limit={3}
-                showViewAll={true}
-                onViewAll={() => navigation.navigate('Notifications')}
-              />
-            )}
-
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Team Updates</Text>
-              <AnnouncementsCard />
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Team Updates</Text>
+                <TouchableOpacity
+                  style={styles.viewAllButton}
+                  onPress={() => navigation.navigate('AllUpdates' as never)}
+                >
+                  <Text style={styles.viewAllText}>View All</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                </TouchableOpacity>
+              </View>
+              <TeamUpdatesCard hideTitle={true} />
             </View>
 
             <View style={styles.section}>
@@ -454,17 +443,6 @@ export const PlayerDashboard = () => {
                   position={user?.position}
                 />
               </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming Events</Text>
-              {upcomingEvents.length > 0 ? (
-                upcomingEvents.map(event => renderEventCard(event))
-              ) : (
-                <View style={styles.noEventsContainer}>
-                  <Text style={styles.noEventsText}>No upcoming events</Text>
-                </View>
-              )}
             </View>
           </>
         )}
@@ -506,11 +484,18 @@ const styles = StyleSheet.create({
   statsSection: {
     paddingTop: 0,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 16,
+    marginBottom: 0,
+    lineHeight: 24,
   },
   scheduleItem: {
     backgroundColor: '#2a305e',
@@ -674,5 +659,17 @@ const styles = StyleSheet.create({
   notificationMessage: {
     fontSize: 14,
     color: theme.colors.text.secondary,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 0,
+  },
+  viewAllText: {
+    color: theme.colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 4,
+    lineHeight: 24,
   },
 }); 

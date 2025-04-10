@@ -41,7 +41,17 @@ export type RootStackParamList = {
   PlayerProfile: { playerId: string };
   AllAnnouncements: undefined;
   Announcement: undefined;
+  AnnouncementDetails: { announcement: Announcement };
   Chat: undefined;
+  EventDetails: {
+    eventId: string;
+    title: string;
+    type: string;
+    date: Date;
+    time: Date;
+    location: string;
+    notes?: string;
+  };
   FormationSetup: {
     formation: string;
     players: Array<{
@@ -88,6 +98,7 @@ export type RootStackParamList = {
     isGoalkeeper?: boolean;
   };
   Notifications: undefined;
+  AllUpdates: undefined;
 };
 
 export type MainTabParamList = {

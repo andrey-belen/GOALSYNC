@@ -282,7 +282,38 @@ export const getTeamAnnouncements = async (teamId: string) => {
 
     // Get user data to verify team membership
     const userData = await getUser(currentUser.uid);
-    if (!userData || userData.teamId !== teamId) {
+    
+    // Get team data to check players array
+    const teamRef = doc(db, 'teams', teamId);
+    const teamDoc = await getDoc(teamRef);
+    
+    if (!teamDoc.exists()) {
+      throw new Error('Team not found');
+    }
+    
+    const teamData = teamDoc.data();
+    const playerIds = teamData.players || [];
+    
+    // Check if the user is a team member or the trainer
+    const isTeamMember = userData?.teamId === teamId;
+    const isInPlayersArray = playerIds.includes(currentUser.uid);
+    const isTrainer = userData?.type === 'trainer' || teamData.trainerId === currentUser.uid;
+    
+    console.log('Team membership check:', {
+      userId: currentUser.uid,
+      teamId,
+      isTeamMember,
+      isInPlayersArray,
+      isTrainer
+    });
+    
+    if (!isTeamMember && !isInPlayersArray && !isTrainer) {
+      console.log('User not authorized to view team announcements:', {
+        userId: currentUser.uid,
+        userData,
+        teamData: { trainerId: teamData.trainerId, players: playerIds },
+        requestedTeamId: teamId
+      });
       throw new Error('You can only view announcements for your own team');
     }
 
@@ -293,6 +324,7 @@ export const getTeamAnnouncements = async (teamId: string) => {
     );
     
     const snapshot = await getDocs(q);
+    console.log(`Found ${snapshot.docs.length} announcements for team ${teamId}`);
     return snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -1481,13 +1513,35 @@ export const getPlayerStatsNotifications = async (playerId: string) => {
     
     interface Event {
       id: string;
-      title?: string;
-      startTime?: any;
+      teamId: string;
+      title: string;
+      type: 'match' | 'training' | 'meeting';
+      startTime: Timestamp;
+      endTime: Timestamp;
+      location: string;
+      description?: string;
+      status?: 'scheduled' | 'completed' | 'cancelled';
+      isOutdoor?: boolean;
+      isAttendanceRequired?: boolean;
+      attendees?: string[];
+      absentees?: string[];
+      createdAt?: Timestamp;
+      updatedAt?: Timestamp;
+      createdBy?: string;
+      // Match-specific fields
       opponent?: string;
-      roster?: Array<{id: string; name: string}>;
-      status?: string;
-      type?: string;
-      [key: string]: any;
+      isHomeGame?: boolean;
+      formation?: string;
+      roster?: {
+        id: string;
+        name: string;
+        number: string;
+        position: string;
+        isStarter: boolean;
+        fieldPosition?: string;
+        status?: string;
+      }[];
+      scoreSubmitted?: boolean;
     }
     
     // Get all player match stats for this player
@@ -1598,23 +1652,48 @@ export const createNotification = async (data: {
 // Get notifications for a user
 export const getUserNotifications = async (userId: string) => {
   try {
-    if (!auth.currentUser) {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.log('Auth error: User not authenticated when trying to get notifications');
       throw new Error('User must be authenticated to get notifications');
     }
     
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(20) // Limit to most recent 20 notifications
-    );
+    // Make sure users can only access their own notifications
+    if (currentUser.uid !== userId) {
+      console.log('Permission denied: User trying to access another user\'s notifications', {
+        currentUserId: currentUser.uid,
+        requestedUserId: userId
+      });
+      throw new Error('You can only access your own notifications');
+    }
     
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
+    console.log('Fetching notifications for user:', userId);
+    
+    try {
+      const notificationsRef = collection(db, 'notifications');
+      const q = query(
+        notificationsRef,
+        where('userId', '==', userId),
+        orderBy('createdAt', 'desc'),
+        limit(20) // Limit to most recent 20 notifications
+      );
+      
+      const snapshot = await getDocs(q);
+      console.log(`Found ${snapshot.docs.length} notifications for user ${userId}`);
+      
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+    } catch (queryError: any) {
+      console.error('Error in Firestore query for notifications:', queryError);
+      console.log('Query details:', {
+        userId,
+        errorCode: queryError.code,
+        errorMessage: queryError.message
+      });
+      throw new Error(`Database error: ${queryError.message}`);
+    }
   } catch (error: any) {
     console.error('Error getting user notifications:', error);
     throw new Error(error.message || 'Failed to get notifications');
@@ -1635,5 +1714,192 @@ export const markNotificationAsRead = async (notificationId: string) => {
   } catch (error: any) {
     console.error('Error marking notification as read:', error);
     throw new Error(error.message || 'Failed to update notification');
+  }
+};
+
+// Delete a notification
+export const deleteNotification = async (notificationId: string) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to delete notifications');
+    }
+    
+    const notificationRef = doc(db, 'notifications', notificationId);
+    await deleteDoc(notificationRef);
+    
+    console.log(`Notification ${notificationId} deleted successfully`);
+    return true;
+  } catch (error: any) {
+    console.error('Error deleting notification:', error);
+    throw new Error(error.message || 'Failed to delete notification');
+  }
+};
+
+// Remove match score requirement
+export const deleteMatchScoreRequirement = async (teamId: string, matchId: string) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to update match requirements');
+    }
+    
+    console.log(`Removing score requirement for match ${matchId}`);
+    
+    // Create a matchStats document to mark this as completed
+    const matchStatsRef = doc(db, 'matchStats', matchId);
+    
+    // Check if it already exists
+    const statsDoc = await getDoc(matchStatsRef);
+    
+    if (statsDoc.exists()) {
+      // Update the existing document
+      await updateDoc(matchStatsRef, {
+        status: 'final',
+        skipReasonNote: 'Marked as complete by trainer to skip score submission',
+        skipReason: 'technical_issue',
+        lastUpdatedBy: auth.currentUser.uid,
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // Create a new document
+      await setDoc(matchStatsRef, {
+        id: matchId,
+        teamId: teamId,
+        status: 'final',
+        skipReasonNote: 'Marked as complete by trainer to skip score submission',
+        skipReason: 'technical_issue',
+        createdBy: auth.currentUser.uid,
+        createdAt: serverTimestamp(),
+        lastUpdatedBy: auth.currentUser.uid,
+        updatedAt: serverTimestamp()
+      });
+    }
+    
+    // Also update the event to mark it as having scores
+    const eventRef = doc(db, 'events', matchId);
+    await updateDoc(eventRef, {
+      scoreSubmitted: true,
+      updatedAt: serverTimestamp()
+    });
+
+    // Delete any related notifications for this match
+    const notificationsRef = collection(db, 'notifications');
+    const notificationsQuery = query(
+      notificationsRef,
+      where('relatedId', '==', matchId),
+      where('type', '==', 'stats_needed')
+    );
+    
+    const notificationsSnapshot = await getDocs(notificationsQuery);
+    const deletePromises = notificationsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    
+    console.log(`Match ${matchId} successfully marked as completed and notifications deleted`);
+    return true;
+  } catch (error: any) {
+    console.error('Error removing match score requirement:', error);
+    throw new Error(error.message || 'Failed to remove score requirement');
+  }
+};
+
+// Check for past matches that need scoring and create notifications
+export const checkAndCreateMatchScoreNotifications = async (teamId: string) => {
+  try {
+    if (!auth.currentUser) {
+      throw new Error('User must be authenticated to check match notifications');
+    }
+    
+    console.log('Checking for matches that need score submission for team:', teamId);
+    
+    // First verify the current user is the team trainer (has permission)
+    const teamRef = doc(db, 'teams', teamId);
+    const teamDoc = await getDoc(teamRef);
+    if (!teamDoc.exists()) {
+      throw new Error('Team not found');
+    }
+    
+    const trainerId = teamDoc.data().trainerId;
+    if (!trainerId) {
+      throw new Error('Team does not have a trainer assigned');
+    }
+    
+    // Verify current user has permission (is team trainer)
+    if (auth.currentUser.uid !== trainerId) {
+      console.log('Current user is not the team trainer - skipping notification creation');
+      return 0;
+    }
+    
+    // Get all match events for this team
+    const eventsRef = collection(db, 'events');
+    const matchesQuery = query(
+      eventsRef,
+      where('teamId', '==', teamId),
+      where('type', '==', 'match')
+    );
+    
+    const matchesSnapshot = await getDocs(matchesQuery);
+    const matches = matchesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Event);
+    
+    // Find matches that have already ended but don't have scores
+    const now = new Date();
+    const pastMatches = matches.filter(match => {
+      // Check if match has ended
+      const endTime = match.endTime?.toDate() || null;
+      // Check if match doesn't have score already
+      const scoreSubmitted = match.scoreSubmitted || false;
+      
+      return endTime && endTime < now && !scoreSubmitted;
+    });
+    
+    console.log(`Found ${pastMatches.length} past matches without scores`);
+    
+    // Check for existing notifications for these matches
+    const notificationsRef = collection(db, 'notifications');
+    let notificationsCreated = 0;
+    
+    // Create notifications for matches without scores
+    for (const match of pastMatches) {
+      // Check if notification already exists for this match
+      const notificationQuery = query(
+        notificationsRef,
+        where('relatedId', '==', match.id),
+        where('type', '==', 'stats_needed')
+      );
+      
+      try {
+        const notificationSnapshot = await getDocs(notificationQuery);
+        
+        // Only create notification if one doesn't already exist
+        if (notificationSnapshot.empty) {
+          console.log(`Creating notification for match: ${match.title}`);
+          
+          // Format match date for display
+          const matchDate = match.startTime?.toDate();
+          const formattedDate = matchDate ? matchDate.toLocaleDateString() : 'Unknown date';
+          
+          // Create notification
+          await createNotification({
+            userId: trainerId,
+            teamId: teamId,
+            type: 'stats_needed',
+            title: 'Match Score Needed',
+            message: `Please submit the score for your match against ${match.opponent} on ${formattedDate}`,
+            relatedId: match.id
+          });
+          
+          notificationsCreated++;
+        } else {
+          console.log(`Notification already exists for match: ${match.title}`);
+        }
+      } catch (notificationError) {
+        console.error(`Error checking notifications for match ${match.id}:`, notificationError);
+        // Continue to next match even if this one fails
+      }
+    }
+    
+    console.log(`Created ${notificationsCreated} new notifications for matches without scores`);
+    return notificationsCreated;
+  } catch (error: any) {
+    console.error('Error checking for match score notifications:', error);
+    throw new Error(error.message || 'Failed to check for match notifications');
   }
 }; 

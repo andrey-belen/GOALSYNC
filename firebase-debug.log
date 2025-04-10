@@ -1,0 +1,24 @@
+[debug] [2025-04-06T11:21:30.567Z] ----------------------------------------------------------------------
+[debug] [2025-04-06T11:21:30.579Z] Command:       /usr/local/bin/node /usr/local/bin/firebase deploy --only firestore:rules
+[debug] [2025-04-06T11:21:30.580Z] CLI Version:   13.35.1
+[debug] [2025-04-06T11:21:30.581Z] Platform:      darwin
+[debug] [2025-04-06T11:21:30.581Z] Node Version:  v22.13.1
+[debug] [2025-04-06T11:21:30.581Z] Time:          Sun Apr 06 2025 18:21:30 GMT+0700 (Indochina Time)
+[debug] [2025-04-06T11:21:30.582Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-04-06T11:21:30.586Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2025-04-06T11:21:31.384Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-04-06T11:21:31.385Z] > authorizing via signed-in user (andreybelenkiy77@gmail.com)
+[debug] [2025-04-06T11:21:31.385Z] [iam] checking project goalsync-81284 for permissions ["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]
+[debug] [2025-04-06T11:21:31.386Z] Checked if tokens are valid: false, expires at: 1743326746926
+[debug] [2025-04-06T11:21:31.386Z] Checked if tokens are valid: false, expires at: 1743326746926
+[debug] [2025-04-06T11:21:31.386Z] > refreshing access token with scopes: []
+[debug] [2025-04-06T11:21:31.393Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2025-04-06T11:21:31.393Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-04-06T11:21:32.197Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2025-04-06T11:21:32.198Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2025-04-06T11:21:32.218Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/goalsync-81284:testIamPermissions [none]
+[debug] [2025-04-06T11:21:32.218Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/goalsync-81284:testIamPermissions x-goog-quota-user=projects/goalsync-81284
+[debug] [2025-04-06T11:21:32.219Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/goalsync-81284:testIamPermissions {"permissions":["datastore.indexes.create","datastore.indexes.delete","datastore.indexes.list","datastore.indexes.update","firebase.projects.get"]}
+[debug] [2025-04-06T11:21:32.446Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2025-04-06T11:21:32.447Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}

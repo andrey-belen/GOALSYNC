@@ -13,7 +13,7 @@ import { theme } from '../theme';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, addDoc, Timestamp, doc, getDoc, query, getDocs, where, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, getDoc, query, getDocs, where, deleteDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { SafeAreaWrapper } from '../components/SafeAreaWrapper';
 import { Event } from '../types/database';
@@ -46,7 +46,8 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
   const [showYellowCards, setShowYellowCards] = useState(false);
   const [showRedCards, setShowRedCards] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [isTrainer, setIsTrainer] = useState(false);
+  
   useEffect(() => {
     const checkEligibility = async () => {
       try {
@@ -61,6 +62,19 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
         const matchData = matchDoc.data() as Event;
         setMatchDetails(matchData);
 
+        // Check if user is the team trainer
+        const trainerCheck = user?.type === 'trainer' && user?.teamId === matchData.teamId;
+        setIsTrainer(trainerCheck);
+        
+        // Skip roster and attendance checks for the trainer
+        if (trainerCheck) {
+          console.log('User is the trainer - bypassing roster and attendance checks');
+          setCanSubmitStats(true);
+          setIsLoading(false);
+          return;
+        }
+
+        // For players, continue with roster checks
         // Check if player is in roster
         const isInRoster = matchData.roster?.some(player => player.id === user?.id);
         if (!isInRoster) {
@@ -121,50 +135,110 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
     };
 
     checkEligibility();
-  }, [matchId, user?.id, navigation]);
+  }, [matchId, user?.id, user?.type, user?.teamId, navigation]);
 
   const handleSubmit = async () => {
     try {
       setIsSubmitting(true);
 
-      // Check if player has rejected stats and delete them first
-      const statsQuery = query(
-        collection(db, 'playerMatchStats'),
-        where('matchId', '==', matchId),
-        where('playerId', '==', user?.id),
-        where('status', '==', 'rejected')
-      );
-      const statsSnapshot = await getDocs(statsQuery);
-      
-      // If there are rejected stats, delete them
-      if (!statsSnapshot.empty) {
-        const rejectedStatId = statsSnapshot.docs[0].id;
-        await deleteDoc(doc(db, 'playerMatchStats', rejectedStatId));
-        console.log('Deleted rejected stats:', rejectedStatId);
+      // Check if the user is a trainer
+      const isTrainer = user?.type === 'trainer' && user?.teamId === matchDetails?.teamId;
+
+      if (isTrainer) {
+        // For trainers, this creates a match score entry for the team
+        // Create match stats document first if it doesn't exist
+        const matchStatsRef = doc(db, 'matchStats', matchId);
+        const matchStatsDoc = await getDoc(matchStatsRef);
+
+        if (matchStatsDoc.exists()) {
+          // Update existing match stats
+          await updateDoc(matchStatsRef, {
+            score: {
+              home: stats.goals,
+              away: 0 // The opponent score should be added separately 
+            },
+            status: 'final',
+            updatedAt: Timestamp.now(),
+            lastUpdatedBy: user?.id
+          });
+        } else {
+          // Create new match stats
+          await setDoc(matchStatsRef, {
+            id: matchId,
+            matchId: matchId,
+            teamId: matchDetails?.teamId,
+            score: {
+              home: stats.goals,
+              away: 0 // The opponent score should be added separately
+            },
+            status: 'final',
+            visibility: 'public',
+            submittedBy: user?.id,
+            submittedAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+            playerStats: [],
+            allStatsComplete: false
+          });
+        }
+
+        // Also update the event to mark it as having scores submitted
+        const eventRef = doc(db, 'events', matchId);
+        await updateDoc(eventRef, {
+          scoreSubmitted: true,
+          status: 'completed',
+          updatedAt: Timestamp.now()
+        });
+
+        Alert.alert(
+          'Success',
+          'Match score has been submitted. You can now add opponent score and player statistics.',
+          [{ 
+            text: 'OK', 
+            onPress: () => navigation.navigate('MatchStats', { matchId, isHomeGame: true })
+          }]
+        );
+      } else {
+        // Regular player stats submission logic
+        
+        // Check if player has rejected stats and delete them first
+        const statsQuery = query(
+          collection(db, 'playerMatchStats'),
+          where('matchId', '==', matchId),
+          where('playerId', '==', user?.id),
+          where('status', '==', 'rejected')
+        );
+        const statsSnapshot = await getDocs(statsQuery);
+        
+        // If there are rejected stats, delete them
+        if (!statsSnapshot.empty) {
+          const rejectedStatId = statsSnapshot.docs[0].id;
+          await deleteDoc(doc(db, 'playerMatchStats', rejectedStatId));
+          console.log('Deleted rejected stats:', rejectedStatId);
+        }
+
+        // Create new player stats
+        const playerStats = {
+          matchId,
+          playerId: user?.id,
+          stats: {
+            ...stats,
+            minutesPlayed: 90, // Default to full match
+          },
+          status: 'pending',
+          submittedAt: Timestamp.now(),
+        };
+
+        await addDoc(collection(db, 'playerMatchStats'), playerStats);
+        
+        Alert.alert(
+          'Success',
+          'Your match statistics have been submitted and are pending review.',
+          [{ 
+            text: 'OK', 
+            onPress: () => navigation.navigate('MatchStats', { matchId, isHomeGame: true })
+          }]
+        );
       }
-
-      // Create new player stats
-      const playerStats = {
-        matchId,
-        playerId: user?.id,
-        stats: {
-          ...stats,
-          minutesPlayed: 90, // Default to full match
-        },
-        status: 'pending',
-        submittedAt: Timestamp.now(),
-      };
-
-      await addDoc(collection(db, 'playerMatchStats'), playerStats);
-      
-      Alert.alert(
-        'Success',
-        'Your match statistics have been submitted and are pending review.',
-        [{ 
-          text: 'OK', 
-          onPress: () => navigation.navigate('MatchStats', { matchId, isHomeGame: true })
-        }]
-      );
     } catch (error) {
       console.error('Error submitting stats:', error);
       Alert.alert(
@@ -196,14 +270,22 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
     <SafeAreaWrapper>
       <ScrollView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Upload Match Statistics</Text>
-          <Text style={styles.subtitle}>Enter your performance stats for this match</Text>
+          <Text style={styles.title}>
+            {isTrainer ? 'Submit Match Score' : 'Upload Match Statistics'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isTrainer
+              ? 'Enter the score for your team and mark the match as completed' 
+              : 'Enter your performance stats for this match'}
+          </Text>
         </View>
 
         <View style={styles.form}>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Text style={styles.label}>Goals</Text>
+              <Text style={styles.label}>
+                {isTrainer ? 'Team Goals' : 'Goals'}
+              </Text>
               <View style={styles.statInputContainer}>
                 <TouchableOpacity 
                   style={styles.statButton}
@@ -221,101 +303,105 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
               </View>
             </View>
 
-            <View style={styles.statItem}>
-              <Text style={styles.label}>Assists</Text>
-              <View style={styles.statInputContainer}>
-                <TouchableOpacity 
-                  style={styles.statButton}
-                  onPress={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
-                >
-                  <Text style={styles.statButtonText}>-</Text>
-                </TouchableOpacity>
-                <Text style={styles.statValue}>{stats.assists}</Text>
-                <TouchableOpacity 
-                  style={styles.statButton}
-                  onPress={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
-                >
-                  <Text style={styles.statButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.statItem}>
-              <Text style={styles.label}>Shots on Target</Text>
-              <View style={styles.statInputContainer}>
-                <TouchableOpacity 
-                  style={styles.statButton}
-                  onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
-                >
-                  <Text style={styles.statButtonText}>-</Text>
-                </TouchableOpacity>
-                <Text style={styles.statValue}>{stats.shotsOnTarget}</Text>
-                <TouchableOpacity 
-                  style={styles.statButton}
-                  onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
-                >
-                  <Text style={styles.statButtonText}>+</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.statItem}>
-              <Text style={styles.label}>Yellow Cards</Text>
-              <Switch
-                value={showYellowCards}
-                onValueChange={setShowYellowCards}
-              />
-              {showYellowCards && (
-                <View style={styles.cardInputContainer}>
-                  <TouchableOpacity 
-                    style={styles.statButton}
-                    onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
-                  >
-                    <Text style={styles.statButtonText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.statValue}>{stats.yellowCards}</Text>
-                  <TouchableOpacity 
-                    style={styles.statButton}
-                    onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
-                  >
-                    <Text style={styles.statButtonText}>+</Text>
-                  </TouchableOpacity>
+            {!isTrainer && (
+              <>
+                <View style={styles.statItem}>
+                  <Text style={styles.label}>Assists</Text>
+                  <View style={styles.statInputContainer}>
+                    <TouchableOpacity 
+                      style={styles.statButton}
+                      onPress={() => setStats(prev => ({ ...prev, assists: Math.max(0, prev.assists - 1) }))}
+                    >
+                      <Text style={styles.statButtonText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.statValue}>{stats.assists}</Text>
+                    <TouchableOpacity 
+                      style={styles.statButton}
+                      onPress={() => setStats(prev => ({ ...prev, assists: prev.assists + 1 }))}
+                    >
+                      <Text style={styles.statButtonText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
-            </View>
 
-            <View style={styles.statItem}>
-              <Text style={styles.label}>Red Cards</Text>
-              <Switch
-                value={showRedCards}
-                onValueChange={setShowRedCards}
-              />
-              {showRedCards && (
-                <View style={styles.cardInputContainer}>
-                  <TouchableOpacity 
-                    style={styles.statButton}
-                    onPress={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
-                  >
-                    <Text style={styles.statButtonText}>-</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.statValue}>{stats.redCards}</Text>
-                  <TouchableOpacity 
-                    style={styles.statButton}
-                    onPress={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
-                  >
-                    <Text style={styles.statButtonText}>+</Text>
-                  </TouchableOpacity>
+                <View style={styles.statItem}>
+                  <Text style={styles.label}>Shots on Target</Text>
+                  <View style={styles.statInputContainer}>
+                    <TouchableOpacity 
+                      style={styles.statButton}
+                      onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: Math.max(0, prev.shotsOnTarget - 1) }))}
+                    >
+                      <Text style={styles.statButtonText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.statValue}>{stats.shotsOnTarget}</Text>
+                    <TouchableOpacity 
+                      style={styles.statButton}
+                      onPress={() => setStats(prev => ({ ...prev, shotsOnTarget: prev.shotsOnTarget + 1 }))}
+                    >
+                      <Text style={styles.statButtonText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
-            </View>
 
-            <View style={styles.statItem}>
-              <Text style={styles.label}>Clean Sheet</Text>
-              <Switch
-                value={stats.cleanSheet}
-                onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
-              />
-            </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.label}>Yellow Cards</Text>
+                  <Switch
+                    value={showYellowCards}
+                    onValueChange={setShowYellowCards}
+                  />
+                  {showYellowCards && (
+                    <View style={styles.cardInputContainer}>
+                      <TouchableOpacity 
+                        style={styles.statButton}
+                        onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.max(0, prev.yellowCards - 1) }))}
+                      >
+                        <Text style={styles.statButtonText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.statValue}>{stats.yellowCards}</Text>
+                      <TouchableOpacity 
+                        style={styles.statButton}
+                        onPress={() => setStats(prev => ({ ...prev, yellowCards: Math.min(2, prev.yellowCards + 1) }))}
+                      >
+                        <Text style={styles.statButtonText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.statItem}>
+                  <Text style={styles.label}>Red Cards</Text>
+                  <Switch
+                    value={showRedCards}
+                    onValueChange={setShowRedCards}
+                  />
+                  {showRedCards && (
+                    <View style={styles.cardInputContainer}>
+                      <TouchableOpacity 
+                        style={styles.statButton}
+                        onPress={() => setStats(prev => ({ ...prev, redCards: Math.max(0, prev.redCards - 1) }))}
+                      >
+                        <Text style={styles.statButtonText}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.statValue}>{stats.redCards}</Text>
+                      <TouchableOpacity 
+                        style={styles.statButton}
+                        onPress={() => setStats(prev => ({ ...prev, redCards: Math.min(1, prev.redCards + 1) }))}
+                      >
+                        <Text style={styles.statButtonText}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.statItem}>
+                  <Text style={styles.label}>Clean Sheet</Text>
+                  <Switch
+                    value={stats.cleanSheet}
+                    onValueChange={(value) => setStats(prev => ({ ...prev, cleanSheet: value }))}
+                  />
+                </View>
+              </>
+            )}
           </View>
 
           <TouchableOpacity
@@ -326,7 +412,9 @@ export const UploadMatchStatsScreen: React.FC<Props> = ({ route, navigation }) =
             {isSubmitting ? (
               <Text style={styles.submitText}>Submitting...</Text>
             ) : (
-              <Text style={styles.submitText}>Submit Statistics</Text>
+              <Text style={styles.submitText}>
+                {isTrainer ? 'Submit Match Score' : 'Submit Statistics'}
+              </Text>
             )}
           </TouchableOpacity>
         </View>

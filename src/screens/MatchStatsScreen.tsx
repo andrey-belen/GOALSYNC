@@ -27,6 +27,7 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [matchDetails, setMatchDetails] = useState<Event | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadMatchStats = async () => {
     try {
@@ -96,6 +97,15 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
 
       console.log('Submitting player stats:', stats);
 
+      // Check for and delete any existing pending or rejected stats for this player
+      if (userPlayerStats && userPlayerStats.status !== 'approved') {
+        console.log('Deleting existing non-approved stats:', userPlayerStats.id);
+        await deleteDoc(doc(db, 'playerMatchStats', userPlayerStats.id));
+        
+        // Update local state to remove the deleted stats
+        setPlayerStats(prev => prev.filter(stat => stat.id !== userPlayerStats.id));
+      }
+
       const newStats = {
         ...stats,
         status: 'pending' as const, // players always submit as pending, trainers need to approve
@@ -142,53 +152,13 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
             status: 'completed'
           });
           
-          // Create notifications for all players in the match roster to submit their stats
-          try {
-            if (matchDetails.roster && matchDetails.roster.length > 0) {
-              // Send notifications to each player in the roster except the current user
-              for (const player of matchDetails.roster) {
-                if (player.id !== user.id) {
-                  await createNotification({
-                    userId: player.id,
-                    type: 'stats_needed',
-                    title: 'Stats Submission Needed',
-                    message: `The match against ${matchDetails.opponent || 'opponent'} has been completed. Please submit your stats.`,
-                    relatedId: matchId,
-                    teamId: matchDetails.teamId || user.teamId || '',
-                  });
-                }
-              }
-            }
-          } catch (notificationError) {
-            console.error('Error creating match completion notifications:', notificationError);
-            // Don't stop the flow if notification creation fails
-          }
+          // Skip creating notifications for other players - these should be sent by the trainer
+          // Players don't have permission to create notifications for other players
         }
       }
       
-      // Create notification for trainers that stats need approval
-      if (matchDetails?.teamId) {
-        // Find team trainers
-        const trainersQuery = query(
-          collection(db, 'users'),
-          where('teamId', '==', matchDetails.teamId),
-          where('type', '==', 'trainer')
-        );
-        
-        const trainersSnapshot = await getDocs(trainersQuery);
-        const trainers = trainersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        
-        for (const trainer of trainers) {
-          await createNotification({
-            userId: trainer.id,
-            type: 'approval_needed',
-            title: 'Stats Need Approval',
-            message: `${user.name || 'A player'} has submitted match statistics for ${matchDetails.title || 'a match'}. Review and approve now.`,
-            relatedId: matchId,
-            teamId: matchDetails.teamId
-          });
-        }
-      }
+      // Instead of creating notifications for trainers directly (which may fail due to permissions),
+      // just show success message and let the periodic check for pending stats notify trainers
       
       Alert.alert(
         'Success', 
@@ -203,44 +173,30 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleTrainerScoreSubmit = async (stats: Omit<MatchStats, 'id' | 'playerStats'>) => {
     try {
-      if (!user?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      console.log('Received stats from TrainerMatchStatsForm:', stats); // Debug log
-
-      const matchStatsData: Omit<MatchStats, 'id'> = {
-        matchId,
-        score: stats.score,
-        possession: stats.possession,
-        status: 'final' as const,
-        visibility: stats.visibility,
-        allStatsComplete: stats.allStatsComplete,
-        playerStats: [],
-        submittedBy: user.id,
-        submittedAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
+      setIsSubmitting(true);
+      
+      // Create or update match stats document
+      const matchStatsRef = doc(db, 'matchStats', matchId);
+      const matchStatsData = {
+        ...stats,
+        teamId: user?.teamId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: user?.id,
+        lastUpdatedBy: user?.id,
+        visibility: 'private' as const,
+        allStatsComplete: false
       };
 
-      console.log('Preparing to save match stats:', matchStatsData); // Debug log
-
-      // Create or update the match stats document
-      const matchStatsRef = doc(db, 'matchStats', matchId);
-      console.log('Using matchStats path:', `matchStats/${matchId}`); // Debug log
-      
       await setDoc(matchStatsRef, matchStatsData, { merge: true });
       
-      // Also mark the match as completed in the events collection
+      // Update the event to mark it as having scores
       const eventRef = doc(db, 'events', matchId);
       await updateDoc(eventRef, {
-        status: 'completed',
+        scoreSubmitted: true,
         updatedAt: serverTimestamp()
       });
       
-      console.log('Successfully called setDoc and updated match status');
-
-      // Update local state
-      setMatchStats(prev => prev ? { ...prev, ...matchStatsData } : { id: matchId, ...matchStatsData });
       if (matchDetails) {
         setMatchDetails({
           ...matchDetails,
@@ -250,17 +206,29 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
         // Create notifications for all players in the match roster to submit their stats
         try {
           if (matchDetails.roster && matchDetails.roster.length > 0) {
-            // Send notifications to each player in the roster
+            // Get existing stats for all players in this match
+            const statsQuery = query(
+              collection(db, 'playerMatchStats'),
+              where('matchId', '==', matchId)
+            );
+            const statsSnapshot = await getDocs(statsQuery);
+            const existingStats = statsSnapshot.docs.map(doc => doc.data());
+            
+            // Send notifications to each player in the roster who hasn't submitted stats yet
             for (const player of matchDetails.roster) {
               if (player.id !== user.id) {
-                await createNotification({
-                  userId: player.id,
-                  type: 'stats_needed',
-                  title: 'Stats Submission Needed',
-                  message: `The match against ${matchDetails.opponent || 'opponent'} has been completed. Please submit your stats.`,
-                  relatedId: matchId,
-                  teamId: matchDetails.teamId || user.teamId || '',
-                });
+                // Check if player already has stats (regardless of status)
+                const hasStats = existingStats.some(stat => stat.playerId === player.id);
+                if (!hasStats) {
+                  await createNotification({
+                    userId: player.id,
+                    type: 'stats_needed',
+                    title: 'Stats Submission Needed',
+                    message: `The match against ${matchDetails.opponent || 'opponent'} has been completed. Please submit your stats.`,
+                    relatedId: matchId,
+                    teamId: matchDetails.teamId || user.teamId || '',
+                  });
+                }
               }
             }
           }
@@ -290,6 +258,8 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
         'Error',
         'Failed to submit match score. Please try again.'
       );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -314,6 +284,20 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
           stat.id === statsId ? { ...stat, ...updateData } : stat
         )
       );
+      
+      // Delete any existing stats_needed notifications for this match and player
+      if (playerId) {
+        const notificationsRef = collection(db, 'notifications');
+        const notificationsQuery = query(
+          notificationsRef,
+          where('userId', '==', playerId),
+          where('type', '==', 'stats_needed'),
+          where('relatedId', '==', matchId)
+        );
+        const notificationsSnapshot = await getDocs(notificationsQuery);
+        const deletePromises = notificationsSnapshot.docs.map(doc => deleteDoc(doc.ref));
+        await Promise.all(deletePromises);
+      }
       
       // Create notification for the player
       if (playerId && matchDetails) {
@@ -614,15 +598,62 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
 
   if (!user) return null;
 
-  const userPlayerStats = playerStats.find(stat => stat.playerId === user.id);
-  const isPlayerInMatch = matchDetails?.roster?.some(player => player.id === user.id);
-  const matchHasEnded = matchDetails?.endTime && matchDetails.endTime.toDate() < new Date();
+  // Check if current user is a trainer
+  const isTrainer = user?.type === 'trainer';
   
-  // Check if the user is a trainer or not to determine if they can submit stats
-  const isTrainer = user.type === 'trainer';
-  const canSubmitPlayerSubmitStats = !isTrainer && !userPlayerStats && isPlayerInMatch && !matchHasEnded;
-  const canSubmitStats = isTrainer || canSubmitPlayerSubmitStats;
-  const isGoalkeeper = matchDetails?.roster?.find(player => player.id === user.id)?.position === 'GK';
+  // Check if current user is a player in this match
+  const isPlayerInMatch = !!matchDetails?.roster?.some(player => player.id === user?.id);
+  
+  // Check if current user's stats are already submitted
+  const userPlayerStats = playerStats.find(stat => stat.playerId === user?.id);
+  
+  // Allow submission if player has no stats or if their previous stats are not approved yet
+  const canSubmitStats = isPlayerInMatch && (!userPlayerStats || userPlayerStats.status !== 'approved');
+  
+  // Check if player is a goalkeeper
+  const playerPosition = matchDetails?.roster?.find(player => player.id === user?.id)?.position;
+  const isGoalkeeper = playerPosition === 'GK';
+  
+  // Show a status banner if player has submitted stats
+  const renderStatusBanner = () => {
+    if (!userPlayerStats) return null;
+    
+    if (userPlayerStats.status === 'pending') {
+      return (
+        <View style={[styles.statusSection]}>
+          <View style={[styles.statusCard]}>
+            <Text style={styles.statusText}>Your stats have been submitted and are waiting for approval</Text>
+          </View>
+        </View>
+      );
+    }
+    
+    if (userPlayerStats.status === 'rejected') {
+      return (
+        <View style={[styles.statusSection]}>
+          <View style={[styles.statusCard, styles.statusRejected]}>
+            <Text style={styles.statusText}>Your stats have been rejected</Text>
+            {userPlayerStats.comments && (
+              <Text style={styles.commentText}>Reason: {userPlayerStats.comments}</Text>
+            )}
+            <Text style={styles.commentText}>Please submit your stats again.</Text>
+          </View>
+        </View>
+      );
+    }
+    
+    if (userPlayerStats.status === 'approved') {
+      return (
+        <View style={[styles.statusSection]}>
+          <View style={[styles.statusCard, styles.statusApproved]}>
+            <Text style={styles.statusText}>Your stats have been approved</Text>
+          </View>
+        </View>
+      );
+    }
+    
+    return null;
+  };
 
   if (isLoading) {
     return (
@@ -640,7 +671,7 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
       <Text style={styles.emptyText}>
         {!isPlayerInMatch && !isTrainer
           ? 'You are not in the roster for this match.'
-          : matchHasEnded
+          : matchDetails?.endTime && matchDetails.endTime.toDate() < new Date()
           ? 'This match has ended. Statistics can no longer be submitted.'
           : userPlayerStats
           ? 'Your statistics are pending review.'
@@ -650,7 +681,7 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   const renderMatchEndBanner = () => {
-    if (!matchHasEnded || isTrainer || userPlayerStats) return null;
+    if (!matchDetails?.endTime || !isTrainer || userPlayerStats) return null;
 
     return (
       <View style={styles.bannerContainer}>
@@ -690,6 +721,9 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
         />
       )}
 
+      {/* Status Banner for players */}
+      {!isTrainer && userPlayerStats && renderStatusBanner()}
+
       {/* Trainer View */}
       {isTrainer && user.teamId ? (
         <TrainerMatchStatsForm
@@ -711,10 +745,12 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
         />
       ) : (
         <>
-          {/* Player Submission Form */}
+          {/* Player Submission Form - show if player can submit stats */}
           {!isTrainer && isPlayerInMatch && canSubmitStats && (
             <View style={styles.formSection}>
-              <Text style={styles.sectionTitle}>Submit Your Statistics</Text>
+              <Text style={styles.sectionTitle}>
+                {userPlayerStats?.status === 'rejected' ? 'Resubmit Your Statistics' : 'Submit Your Statistics'}
+              </Text>
               <PlayerMatchStatsForm
                 matchId={matchId}
                 playerId={user.id}
@@ -727,8 +763,8 @@ export const MatchStatsScreen: React.FC<Props> = ({ route, navigation }) => {
           {/* Empty State */}
           {(!matchStats && !playerStats.length) && renderEmptyState()}
 
-          {/* Stats Not Released Message */}
-          {!isTrainer && matchStats && matchStats.visibility !== 'public' && (
+          {/* Stats Not Released Message - only show if no submission form is displayed */}
+          {!isTrainer && matchStats && matchStats.visibility !== 'public' && !canSubmitStats && (
             <View style={styles.notReleasedContainer}>
               <Ionicons name="lock-closed" size={24} color={theme.colors.warning} />
               <Text style={styles.notReleasedText}>

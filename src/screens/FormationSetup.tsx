@@ -9,6 +9,9 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -18,16 +21,24 @@ import { SelectedPlayer } from '../types/formation';
 import { auth, getUser, getTeamMembers } from '../config/firebase';
 import { TeamMember } from '../types/database';
 
+interface FormationSetupParams {
+  formation: string;
+  players: Array<{
+    id: string;
+    name: string;
+    position?: string;
+    number?: string;
+    isStarter?: boolean;
+    fieldPosition?: string;
+    status?: string;
+  }>;
+  onComplete?: (positions: any) => void;
+}
+
 type Props = NativeStackScreenProps<RootStackParamList, 'FormationSetup'>;
 
-interface Player {
-  id: string;
-  name: string;
-  number: number;
-  position: 'GK' | 'DEF' | 'MID' | 'FWD';
-  isStarter: boolean;
-  fieldPosition?: string;
-  status?: 'active' | 'injured';
+interface Player extends SelectedPlayer {
+  // Any additional properties needed specifically in this component
 }
 
 interface Position {
@@ -112,15 +123,17 @@ export const FormationSetup = ({ route, navigation }: Props) => {
 
       // If players were passed in from navigation params, use those
       if (route.params.players && route.params.players.length > 0) {
-        const convertedPlayers = route.params.players.map(p => ({
+        // Convert the incoming players to the Player type
+        const convertedPlayers: Player[] = route.params.players.map(p => ({
           id: p.id,
           name: p.name,
-          number: parseInt(p.number) || 0,
-          position: p.position as 'GK' | 'DEF' | 'MID' | 'FWD',
-          isStarter: p.isStarter,
+          number: p.number || '0',
+          position: (p.position || 'DEF') as 'GK' | 'DEF' | 'MID' | 'FWD',
+          isStarter: Boolean(p.isStarter),
           fieldPosition: p.fieldPosition,
-          status: p.status
+          status: (p.status || 'active') as 'active' | 'injured'
         }));
+        
         setPlayers(convertedPlayers);
 
         // Initialize selectedPositions with current player positions
@@ -140,15 +153,15 @@ export const FormationSetup = ({ route, navigation }: Props) => {
       if (!userData?.teamId) return;
 
       const teamMembers = await getTeamMembers(userData.teamId) as TeamMember[];
-      const playerMembers = teamMembers
+      const playerMembers: Player[] = teamMembers
         .filter((member) => member.role === 'player')
         .map((member) => ({
           id: member.id,
           name: member.name,
-          number: member.number || 0,
+          number: member.number || '0',
           position: (member.position?.toUpperCase() || 'DEF') as 'GK' | 'DEF' | 'MID' | 'FWD',
           isStarter: true,
-          status: member.status
+          status: (member.status || 'active') as 'active' | 'injured'
         }));
 
       setPlayers(playerMembers);
@@ -452,7 +465,6 @@ export const FormationSetup = ({ route, navigation }: Props) => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Formation Setup: {formation}</Text>
       <Text style={styles.subtitle}>Tap on a position to assign a player</Text>
       
       {renderInjuryWarning()}
@@ -465,53 +477,60 @@ export const FormationSetup = ({ route, navigation }: Props) => {
           <TouchableOpacity
             style={styles.addSubstituteButton}
             onPress={() => {
-              setSelectedPositionId(null); // Clear any selected position
-              setModalVisible(true); // Open player selection modal
+              setSelectedPositionId(null);
+              setModalVisible(true);
             }}
           >
             <Ionicons name="add-circle-outline" size={24} color={theme.colors.primary} />
             <Text style={styles.addSubstituteText}>Add Substitute</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {substitutes.map(player => (
-            <View key={player.id} style={styles.substituteCard}>
-              <TouchableOpacity
-                style={styles.removeSubstituteButton}
-                onPress={() => {
-                  const updatedPlayers = players.map(p => {
-                    if (p.id === player.id) {
-                      return { ...p, isStarter: true };
-                    }
-                    return p;
-                  });
-                  setPlayers(updatedPlayers);
-                }}
-              >
-                <Ionicons name="close-circle" size={20} color="#ff4444" />
-              </TouchableOpacity>
-              <Text style={styles.playerNumber}>#{player.number}</Text>
-              <Text style={styles.playerName}>{player.name}</Text>
-              <Text style={styles.playerPosition}>{player.position}</Text>
-              {player.status === 'injured' && (
-                <View style={styles.substituteInjuredBadge}>
-                  <Text style={styles.substituteInjuredText}>INJURED</Text>
+        <View style={styles.substitutesScrollContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.substitutesScrollContent}
+          >
+            {substitutes.length > 0 ? (
+              substitutes.map(player => (
+                <View key={player.id} style={styles.substituteCard}>
+                  <TouchableOpacity
+                    style={styles.removeSubstituteButton}
+                    onPress={() => {
+                      const updatedPlayers = players.map(p => {
+                        if (p.id === player.id) {
+                          return { ...p, isStarter: true };
+                        }
+                        return p;
+                      });
+                      setPlayers(updatedPlayers);
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#ff4444" />
+                  </TouchableOpacity>
+                  <Text style={styles.playerNumber}>#{player.number}</Text>
+                  <Text style={styles.playerName}>{player.name}</Text>
+                  <Text style={styles.playerPosition}>{player.position}</Text>
+                  {player.status === 'injured' && (
+                    <View style={styles.substituteInjuredBadge}>
+                      <Text style={styles.substituteInjuredText}>INJURED</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-            </View>
-          ))}
-        </ScrollView>
+              ))
+            ) : (
+              <View style={styles.noSubstitutesMessage}>
+                <Text style={styles.noSubstitutesText}>No substitutes added</Text>
+                <Text style={styles.noSubstitutesSubtext}>Tap the "Add Substitute" button to add players</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
       </View>
 
       {renderPlayerModal()}
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.cancelButtonText}>Back</Text>
-        </TouchableOpacity>
         <TouchableOpacity
           style={styles.confirmButton}
           onPress={handleConfirm}
@@ -524,10 +543,15 @@ export const FormationSetup = ({ route, navigation }: Props) => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
-    padding: FIELD_PADDING,
+    padding: FIELD_PADDING / 2,
+    paddingBottom: FIELD_PADDING,
   },
   title: {
     fontSize: 24,
@@ -536,20 +560,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: theme.colors.text.secondary,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   field: {
     flex: 1,
-    backgroundColor: '#1a8f3c', // Green field color
+    backgroundColor: '#1a8f3c',
     borderRadius: 12,
     position: 'relative',
-    marginBottom: 20,
-    aspectRatio: 2/3,
-    alignSelf: 'center', // Center the field
-    width: '100%', // Take full width
-    maxWidth: 400, // Maximum width to maintain proportions
+    marginBottom: 12,
+    aspectRatio: 0.75,
+    alignSelf: 'center',
+    width: '100%',
+    maxHeight: '60%',
   },
   centerCircle: {
     position: 'absolute',
@@ -606,13 +630,13 @@ const styles = StyleSheet.create({
   },
   position: {
     position: 'absolute',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
     backgroundColor: '#2a305e',
     justifyContent: 'center',
     alignItems: 'center',
-    transform: [{ translateX: -25 }, { translateY: -25 }],
+    transform: [{ translateX: -22.5 }, { translateY: -22.5 }],
   },
   positionSelected: {
     backgroundColor: theme.colors.primary,
@@ -624,7 +648,7 @@ const styles = StyleSheet.create({
   },
   positionText: {
     color: theme.colors.text.primary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   assignedPositionText: {
@@ -632,16 +656,17 @@ const styles = StyleSheet.create({
   },
   playerNumber: {
     color: theme.colors.text.primary,
-    fontSize: 10,
+    fontSize: 9,
   },
   substitutesContainer: {
-    marginBottom: 20,
+    marginBottom: 12,
+    minHeight: 140,
   },
   substitutesHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
@@ -657,6 +682,16 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  substitutesScrollContainer: {
+    minHeight: 100,
+    borderRadius: 12,
+    backgroundColor: '#1a1f3d',
+    padding: 8,
+  },
+  substitutesScrollContent: {
+    paddingVertical: 10,
+    minWidth: '100%',
   },
   substituteCard: {
     backgroundColor: '#2a305e',
@@ -683,27 +718,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   footer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  cancelButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#2a305e',
-    alignItems: 'center',
+    marginTop: 8,
   },
   confirmButton: {
-    flex: 2,
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     backgroundColor: theme.colors.primary,
     alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: theme.colors.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
   },
   confirmButtonText: {
     color: '#fff',
@@ -828,5 +849,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  noSubstitutesMessage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2a305e',
+    borderRadius: 12,
+    padding: 20,
+    width: '100%',
+    minHeight: 120,
+  },
+  noSubstitutesText: {
+    color: theme.colors.text.primary,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  noSubstitutesSubtext: {
+    color: theme.colors.text.secondary,
+    fontSize: 14,
+    textAlign: 'center',
   },
 });

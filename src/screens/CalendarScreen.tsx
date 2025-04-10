@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -48,7 +48,7 @@ const getEventColor = (type: string) => {
   }
 };
 
-const EventCard = ({ event }: { event: Event }) => {
+const EventCard = ({ event, forceRefresh = 0 }: { event: Event, forceRefresh?: number }) => {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -66,6 +66,7 @@ const EventCard = ({ event }: { event: Event }) => {
   useEffect(() => {
     const checkAttendance = async () => {
       try {
+        setCheckingAttendance(true);
         const status = await getEventAttendanceStatus(event.id);
         setHasAttendance(status);
       } catch (error) {
@@ -78,7 +79,7 @@ const EventCard = ({ event }: { event: Event }) => {
     if (isTrainer) {
       checkAttendance();
     }
-  }, [event.id, isTrainer]);
+  }, [event.id, isTrainer, forceRefresh]);
 
   const handleEventPress = async () => {
     if (event.type === 'match') {
@@ -203,6 +204,7 @@ export const CalendarScreen = () => {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const navigation = useNavigation<NavigationProp>();
   const { user } = useAuth();
 
@@ -210,29 +212,7 @@ export const CalendarScreen = () => {
     loadTeamId();
   }, []);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      if (teamId) {
-        loadEvents();
-      }
-    }, [teamId, currentWeek])
-  );
-
-  const loadTeamId = async () => {
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
-
-      const userData = await getUser(currentUser.uid);
-      if (userData?.teamId) {
-        setTeamId(userData.teamId);
-      }
-    } catch (error) {
-      console.error('Error loading team ID:', error);
-    }
-  };
-
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     if (!teamId) return;
 
     try {
@@ -248,6 +228,29 @@ export const CalendarScreen = () => {
       console.error('Error loading events:', error);
     } finally {
       setLoading(false);
+    }
+  }, [teamId, currentWeek]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (teamId) {
+        loadEvents();
+        setRefreshKey(prev => prev + 1);
+      }
+    }, [teamId, currentWeek, loadEvents])
+  );
+
+  const loadTeamId = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const userData = await getUser(currentUser.uid);
+      if (userData?.teamId) {
+        setTeamId(userData.teamId);
+      }
+    } catch (error) {
+      console.error('Error loading team ID:', error);
     }
   };
 
@@ -348,7 +351,7 @@ export const CalendarScreen = () => {
             </View>
             <View style={styles.eventsContainer}>
               {getEventsForDate(date).map(event => (
-                <EventCard key={event.id} event={event} />
+                <EventCard key={event.id} event={event} forceRefresh={refreshKey} />
               ))}
               {getEventsForDate(date).length === 0 && (
                 <View style={styles.noEventsContainer}>

@@ -47,7 +47,7 @@ export const MatchScoreDisplay: React.FC<MatchScoreDisplayProps> = ({
             visibility === 'public' ? styles.publicText : styles.privateText
           ]}>
             {visibility === 'public' ? 'Match Statistics Released' : 'Statistics Not Yet Released'}
-          </Text>
+      </Text>
         </View>
       )}
 

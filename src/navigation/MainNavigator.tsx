@@ -26,6 +26,8 @@ import { AnnouncementDetailsScreen } from '../screens/AnnouncementDetailsScreen'
 import { MatchStatsScreen } from '../screens/MatchStatsScreen';
 import { UploadMatchStatsScreen } from '../screens/UploadMatchStatsScreen';
 import { SubmitPlayerStatsScreen } from '../screens/SubmitPlayerStatsScreen';
+import { Notifications } from '../screens/Notifications';
+import { AllUpdates } from '../screens/AllUpdates';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -94,10 +96,43 @@ export const MainNavigator = () => {
     >
       <Stack.Screen name="MainTabs" component={TabNavigator} />
       <Stack.Screen name="QRScanner" component={QRScannerScreen} />
-      <Stack.Screen name="Announcement" component={AnnouncementScreen} />
+      <Stack.Screen 
+        name="Announcement" 
+        component={AnnouncementScreen} 
+        options={{
+          headerShown: true,
+          title: 'New Announcement',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
       <Stack.Screen name="Schedule" component={ScheduleScreen} />
-      <Stack.Screen name="FormationTemplate" component={FormationTemplateScreen} />
-      <Stack.Screen name="FormationSetup" component={FormationSetup} />
+      <Stack.Screen 
+        name="FormationTemplate" 
+        component={FormationTemplateScreen} 
+        options={{
+          headerShown: true,
+          title: 'Select Formation',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
+      <Stack.Screen 
+        name="FormationSetup" 
+        component={FormationSetup} 
+        options={{
+          headerShown: true,
+          title: 'Formation Setup',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
       <Stack.Screen 
         name="MatchDetails" 
         component={MatchDetails}
@@ -159,7 +194,18 @@ export const MainNavigator = () => {
         }}
       />
       <Stack.Screen name="Reports" component={ReportsScreen} />
-      <Stack.Screen name="TeamManagement" component={TeamManagement} />
+      <Stack.Screen 
+        name="TeamManagement" 
+        component={TeamManagement} 
+        options={{
+          headerShown: true,
+          title: 'Team Settings',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
       <Stack.Screen 
         name="AllAnnouncements" 
         component={AllAnnouncementsScreen}
@@ -214,6 +260,19 @@ export const MainNavigator = () => {
         options={{
           headerShown: true,
           title: 'Announcement',
+          headerStyle: {
+            backgroundColor: '#1a1f3d',
+          },
+          headerTintColor: '#fff',
+        }}
+      />
+      <Stack.Screen name="Notifications" component={Notifications} />
+      <Stack.Screen 
+        name="AllUpdates" 
+        component={AllUpdates}
+        options={{
+          headerShown: false,
+          title: 'Updates',
           headerStyle: {
             backgroundColor: '#1a1f3d',
           },

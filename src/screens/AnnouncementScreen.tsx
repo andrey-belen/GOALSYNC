@@ -66,8 +66,7 @@ export const AnnouncementScreen = ({ navigation }: Props) => {
       style={styles.container}
     >
       <ScrollView style={styles.scrollView}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>New Announcement</Text>
+        <View style={styles.priorityContainer}>
           <TouchableOpacity 
             style={[
               styles.priorityButton,
@@ -115,25 +114,22 @@ export const AnnouncementScreen = ({ navigation }: Props) => {
             />
           </View>
         </View>
+        
+        {/* Add bottom padding to ensure content is visible above the fixed button */}
+        <View style={styles.bottomPadding} />
       </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity 
-          style={styles.cancelButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
-          disabled={loading}
-        >
-          <Text style={styles.submitButtonText}>
-            {loading ? 'Posting...' : 'Post Announcement'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {/* Fixed floating post button */}
+      <TouchableOpacity 
+        style={[styles.floatingPostButton, loading && styles.postButtonDisabled]}
+        onPress={handleSubmit}
+        disabled={loading}
+      >
+        <Text style={styles.postButtonText}>
+          {loading ? 'Posting...' : 'Post Announcement'}
+        </Text>
+        <Ionicons name="send" size={20} color="#fff" />
+      </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 };
@@ -146,16 +142,10 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  header: {
+  priorityContainer: {
     padding: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: theme.colors.text.primary,
+    justifyContent: 'flex-end',
   },
   priorityButton: {
     flexDirection: 'row',
@@ -197,36 +187,34 @@ const styles = StyleSheet.create({
   messageInput: {
     height: 150,
   },
-  footer: {
-    padding: 20,
-    flexDirection: 'row',
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2a305e',
+  bottomPadding: {
+    height: 80, // Adjust this value based on the height of the floating button
   },
-  cancelButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#2a305e',
-    alignItems: 'center',
-  },
-  submitButton: {
-    flex: 2,
-    padding: 16,
-    borderRadius: 12,
+  floatingPostButton: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
     backgroundColor: theme.colors.primary,
+    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  submitButtonDisabled: {
+  postButtonDisabled: {
     opacity: 0.5,
   },
-  cancelButtonText: {
-    color: theme.colors.text.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  submitButtonText: {
+  postButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
